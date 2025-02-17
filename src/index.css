@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.dark {
+  --tw-prose-links: #fff;
+  --tw-prose-link-hover: #ddd;
+  --tw-prose-link-underline: #fff;
+  --tw-prose-link-underline-hover: #ddd;
+  --tw-prose-link-underline-offset: 0.25em;
+  --tw-prose-link-underline-offset-hover: 0.25em;
+}
+
+

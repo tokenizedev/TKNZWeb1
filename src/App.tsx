@@ -139,9 +139,15 @@ function App() {
                 </p>
                 
                 <div className="my-8 space-y-8">
-                  <Tweet id="1885051149558112373" />
-                  <Tweet id="1888767403607437479" />
-                  <Tweet id="1888767403607437479" />
+                  <div className="dark">
+                    <Tweet id="1885051149558112373" />
+                  </div>
+                  <div className="dark">
+                    <Tweet id="1888767403607437479" />
+                  </div>
+                  <div className="dark">
+                    <Tweet id="1888767403607437479" />
+                  </div>
                 </div>
 
                 <p>
@@ -227,7 +233,7 @@ function App() {
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto flex flex-col items-center">
             <img 
-              src="https://raw.githubusercontent.com/stackblitz/stackblitz-webcontainer-core-api/main/assets/logo.png" 
+              src="./assets/logo.png" 
               alt="TKNZ Logo" 
               className="h-8 mb-4"
             />
