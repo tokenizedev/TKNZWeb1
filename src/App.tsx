@@ -139,9 +139,15 @@ function App() {
                 </p>
                 
                 <div className="my-8 space-y-8">
-                  <Tweet id="1885051149558112373" />
-                  <Tweet id="1888767403607437479" />
-                  <Tweet id="1888767403607437479" />
+                  <div className="dark">
+                    <Tweet id="1885051149558112373" />
+                  </div>
+                  <div className="dark">
+                    <Tweet id="1888767403607437479" />
+                  </div>
+                  <div className="dark">
+                    <Tweet id="1888767403607437479" />
+                  </div>
                 </div>
 
                 <p>
