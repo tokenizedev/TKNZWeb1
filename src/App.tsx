@@ -118,7 +118,8 @@ function App() {
           <article className="md:col-span-3 bg-white rounded-lg shadow-sm p-8">
             <div className="prose lg:prose-lg max-w-none">
               <section id="announcing-the-project">
-                <p className="text-xl leading-relaxed">
+              <h2 className="text-3xl font-bold mb-6">Tokenize Anything. Tokenize Everything.</h2>
+                <p>
                   Introducing TKNZ – a Chrome extension / non-custodial wallet that allows anyone to tokenize anything on the internet in just one click. <i>The fastest way to tokenize any news</i>, social posts or any other content on the internet.
                 </p>
                 <p>
