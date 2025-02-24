@@ -263,13 +263,13 @@ export const handler: Handler = async (event) => {
     });
 
     const response = completion.choices[0]?.message?.content;
-
+    let token = {}
     if (!response) {
         throw new Error('No response from AI');
     }
 
     try {
-        JSON.parse(response)
+        token = JSON.parse(response)
     } catch (error) {
         console.error('Error parsing response:', error)
         return {
@@ -283,7 +283,10 @@ export const handler: Handler = async (event) => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: response
+      body: JSON.stringify({
+        article: { ...data, isXPost },
+        token: token
+      })
     }
 
   } catch (error) {
