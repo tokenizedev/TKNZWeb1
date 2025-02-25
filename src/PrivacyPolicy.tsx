@@ -81,7 +81,7 @@ function PrivacyPolicy() {
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto flex flex-col items-center">
             <img 
-              src="https://raw.githubusercontent.com/stackblitz/stackblitz-webcontainer-core-api/main/assets/logo.png" 
+              src="assets/logo.png" 
               alt="TKNZ Logo" 
               className="h-8 mb-4"
             />

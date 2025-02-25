@@ -73,22 +73,22 @@ function App() {
               <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                 <h3 className="text-lg font-semibold mb-4 text-gray-900">TKNZ SOCIALS</h3>
                 <div className="flex flex-col space-y-4">
-                  <a href="https://twitter.com/TKNZ" target="_blank" rel="noopener noreferrer" 
+                  <a href="https://x.com/tknzfun" target="_blank" rel="noopener noreferrer" 
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
                     <Twitter className="w-5 h-5" />
                     <span>Twitter</span>
                   </a>
-                   <a href="https://twitter.com/TKNZ" target="_blank" rel="noopener noreferrer" 
+                   <a href="https://x.com/TopXilef" target="_blank" rel="noopener noreferrer" 
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
                     <Twitter className="w-5 h-5" />
                     <span>Developer</span>
                   </a>
-                  <a href="https://dexscreener.com/TKNZ" target="_blank" rel="noopener noreferrer"
+                  <a href="#" onClick="alert('DexScreener will be updated soon')" rel="noopener noreferrer"
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
                     <BarChart3 className="w-5 h-5" />
                     <span>Dex Screener</span>
                   </a>
-                  <a href="https://pump.fun/TKNZ" target="_blank" rel="noopener noreferrer"
+                  <a href="#" onClick="alert('Pump.Fun link will be updated soon')" rel="noopener noreferrer"
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
                     <Rocket className="w-5 h-5" />
                     <span>Pump.fun</span>
@@ -118,17 +118,18 @@ function App() {
           <article className="md:col-span-3 bg-white rounded-lg shadow-sm p-8">
             <div className="prose lg:prose-lg max-w-none">
               <section id="announcing-the-project">
-                <p className="text-xl leading-relaxed">
-                  The era of tokenization just got a whole lot simpler. Introducing TKNZ – a Chrome extension / non-custodial wallet that allows anyone to tokenize anything on the internet in just one click.
+              <h2 className="text-3xl font-bold mb-6">Tokenize Anything. Tokenize Everything.</h2>
+                <p>
+                  Introducing TKNZ – a Chrome extension / non-custodial wallet that allows anyone to tokenize anything on the internet in just one click. <i>The fastest way to tokenize any news</i>, social posts or any other content on the internet.
                 </p>
                 <p>
-                  TKNZ empowers users to create their own tokens on Pump.fun directly from any web page or social media post. With this tool, token creation is no longer the domain of developers or crypto experts—it's a seamless experience designed for everyone.
+                  TKNZ empowers users to create their own tokens on Pump.fun directly from any web page or social media post. With this tool, the friction of launching a token is removed. No need to copy paste links or images. Just one click and the content is tokenized onto the blockchain forever!
                 </p>
                 <p>
                   The extension operates as a non-custodial wallet, ensuring complete user control over their tokens. Launching a token takes mere seconds, requiring no coding skills or prior blockchain knowledge. Users only pay Pump.fun and Solana transaction fees, making it as accessible for anyone.
                 </p>
                 <p>
-                 Launch a token in under 5 seconds with TKNZ. Stop racing to be the first token deployed, start winning.
+                 Launch a token in under 5 seconds with TKNZ. Stop racing to be the first token deployed, <strong>start winning</strong>.
                 </p>
               </section>
 
@@ -146,7 +147,7 @@ function App() {
                     <Tweet id="1888767403607437479" />
                   </div>
                   <div className="dark">
-                    <Tweet id="1888767403607437479" />
+                    <Tweet id="1885095920116605152" />
                   </div>
                 </div>
 
@@ -159,7 +160,7 @@ function App() {
                 <h2 className="text-3xl font-bold mb-6">How to Use TKNZ</h2>
                 <div className="bg-gray-50 p-6 rounded-lg mb-6">
                   <p className="font-medium mb-4">
-                    Using TKNZ is effortless, thanks to its intuitive design and user-friendly interface. Follow these simple steps:
+                    Using TKNZ is effortless. Follow these simple steps:
                   </p>
                   <ol className="list-decimal list-inside space-y-3">
                     <li>Download TKNZ from the Chrome Extension Store. (Link to be added soon!)</li>
@@ -167,7 +168,7 @@ function App() {
                     <li>Fund your wallet with Solana to cover transaction fees.</li>
                     <li>Open the extension on any webpage. TKNZ is optimized for news articles and Twitter posts but works across the web.</li>
                     <li>Let TKNZ's AI generate token details, such as the name, ticker, and icon. Want to make it funnier? Click the "Memier" button for a lighthearted twist or customize the details yourself.</li>
-                    <li>Click "Create Meme Coin" and watch as your token is instantly launched on Pump.fun.</li>
+                    <li>Click "Create Coin" and watch as your token is instantly launched on Pump.fun.</li>
                   </ol>
                 </div>
                 <p>
@@ -178,23 +179,23 @@ function App() {
               <section id="whats-next-the-tknz-roadmap" className="mt-12">
                 <h2 className="text-3xl font-bold mb-6">What's Next? The TKNZ Roadmap</h2>
                 <p>
-                  TKNZ is just getting started. The team behind the extension is committed to expanding its capabilities based on user feedback and community engagement. Here's a glimpse of what's on the horizon:
+                  TKNZ is just getting started. The team behind the extension is committed to expanding its capabilities based on user feedback and community engagement. Here's a glimpse of what we are thinkng:
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                   {[
                     {
                       title: "Token Gating for Premium Access",
-                      description: "Future versions of TKNZ will require holding TKNZ tokens for full functionality.",
+                      description: "Future versions of TKNZ will require holding TKNZ tokens for full functionality. Creating value for $TKNZ holders",
                       icon: <Wallet className="w-12 h-12 text-[#00FF9D]" />
                     },
                     {
-                      title: "Wallet Import Functionality",
-                      description: "Users will soon be able to import existing Solana wallets.",
+                      title: "Robust Wallet Tooling",
+                      description: "Users will soon be able to import existing Solana wallets, send and swap tokens fromm their TKNZ wallet",
                       icon: <ArrowRightLeft className="w-12 h-12 text-[#00FF9D]" />
                     },
                     {
-                      title: "Direct Token Transfers",
-                      description: "The ability to send tokens directly from your TKNZ wallet to others is in the works.",
+                      title: "Integrations with other Launchpads",
+                      description: "Allow users to choose which launchpads to utilize for their launches",
                       icon: <ArrowRightLeft className="w-12 h-12 text-[#00FF9D]" />
                     },
                     {
@@ -233,7 +234,7 @@ function App() {
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto flex flex-col items-center">
             <img 
-              src="./assets/logo.png" 
+              src="assets/logo.png" 
               alt="TKNZ Logo" 
               className="h-8 mb-4"
             />
