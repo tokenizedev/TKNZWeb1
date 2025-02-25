@@ -13,7 +13,7 @@ interface ArticleData {
 }
 
 const openai = new OpenAI({
-    apiKey: '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'
+    apiKey: process.env.OPENAI_API_KEY
 });
 
 const systemPrompt = (prompt: string, level: number) => `You are a blockchain tokenization expert specializing in creating literal and accurate token names for social media content. Your primary goal is to accurately represent the content, especially at Level 0.
@@ -225,21 +225,53 @@ const extractArticleData = async (url: string): Promise<ArticleData> => {
 }
 
 export const handler: Handler = async (event) => {
+  // Add CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*', // In production, restrict this to your extension's origin
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json'
+  };
+
+  // Handle preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers
+    };
+  }
+
   // Only allow POST requests
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers,
       body: JSON.stringify({ error: 'Method not allowed' })
     }
   }
 
   try {
-    const { url, level = 1 } = JSON.parse(event.body || '{}')
+    // Validate request body
+    if (!event.body) {
+      throw new Error('Missing request body');
+    }
+
+    const { url, level = 1 } = JSON.parse(event.body);
 
     if (!url) {
       return {
         statusCode: 400,
+        headers,
         body: JSON.stringify({ error: 'URL is required' })
+      }
+    }
+
+    // Validate level
+    if (typeof level !== 'number' || level < 0 || level > 3) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Invalid level. Must be between 0 and 3' })
       }
     }
 
@@ -249,6 +281,7 @@ export const handler: Handler = async (event) => {
     const data = isXPost 
       ? await extractTweetData(url)
       : await extractArticleData(url)
+
     const { title, description: articleDesc } = data
     const prompt = `Article Title: ${title}\nDescription: ${articleDesc}\nType: ${isXPost ? 'Social Media Post' : 'News Article'}\n\nGenerate a ${isXPost ? 'tweet-based' : 'news-based'} meme coin.`;
     const generatedPrompt = systemPrompt(prompt, level)
@@ -259,33 +292,28 @@ export const handler: Handler = async (event) => {
           { role: "system", content: generatedPrompt },
           { role: "user", content: prompt }
         ],
-        temperature: 0.7 + (level * 0.1) // Increase creativity with level
+        temperature: 0.7 + (level * 0.1)
     });
 
     const response = completion.choices[0]?.message?.content;
-    let token = {}
     if (!response) {
         throw new Error('No response from AI');
     }
 
+    let token;
     try {
         token = JSON.parse(response)
     } catch (error) {
         console.error('Error parsing response:', error)
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'Error parsing response' })
-        }
+        throw new Error('Invalid AI response format');
     }
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         article: { ...data, isXPost },
-        token: token
+        token
       })
     }
 
@@ -293,7 +321,11 @@ export const handler: Handler = async (event) => {
     console.error('Error processing request:', error)
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Internal server error' })
+      headers,
+      body: JSON.stringify({ 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      })
     }
   }
 } 
