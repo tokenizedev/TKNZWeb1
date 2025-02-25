@@ -23,13 +23,20 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Add step to copy functions
+      - name: Copy Netlify Functions
+        run: |
+          mkdir -p dist/netlify/functions
+          cp -r netlify/functions/* dist/netlify/functions/
+
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v2.0
         with:
-          publish-dir: './dist'  # Update this to your build output directory
+          publish-dir: './dist'
           production-branch: main
           deploy-message: "Deploy from GitHub Actions"
+          functions-dir: './dist/netlify/functions'
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_DEPLOY_KEY }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}  # You'll need to add this secret
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         timeout-minutes: 1
