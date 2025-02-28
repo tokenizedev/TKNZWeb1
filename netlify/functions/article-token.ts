@@ -1,6 +1,4 @@
 import { Handler } from '@netlify/functions'
-import axios from 'axios'
-import * as cheerio from 'cheerio'
 import OpenAI from 'openai'
 
 interface ArticleData {
@@ -9,15 +7,20 @@ interface ArticleData {
   description: string
   url: string
   author?: string
-  xUrl?: string
+  xUrl?: string,
+  isXPost: boolean
+}
+
+interface ArticleTokenRequest {
+    article: ArticleData,
+    level?: number
 }
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });
 
-const systemPrompt = (prompt: string, level: number) => `You are a blockchain tokenization expert specializing in creating literal and accurate token names for social media content. Your primary goal is to accurately represent the content, especially at Level 0.
-
+const systemPrompt = (level: number) => `You are a blockchain tokenization expert specializing in creating literal and accurate token names for social media content. Your primary goal is to accurately represent the content, especially at Level 0.
 ### **Level 0 (Most Important - Current level: ${level === 0}):**
 - **Core Principle:** 100% literal, no creativity, just facts
 - **Name Format:**
@@ -90,140 +93,6 @@ Output Format:
   "description": "Literal Description"
 }`;
 
-
-const extractTweetData = async (url: string): Promise<ArticleData> => {
-  try {
-    const response = await axios.get(url)
-    const $ = cheerio.load(response.data)
-    
-    // Find tweet container
-    const tweetContainer = $('article[data-testid="tweet"]')
-    if (!tweetContainer.length) {
-      throw new Error('Tweet container not found')
-    }
-
-    const tweetText = tweetContainer.find('div[lang]').text() || ''
-    const tweetImage = tweetContainer.find('img[alt="Image"]').attr('src') || ''
-    const authorName = tweetContainer.find('div[data-testid="User-Name"] span').text() || ''
-
-    return {
-      title: tweetText || 'Tweet',
-      image: tweetImage,
-      description: tweetText,
-      author: authorName,
-      url: url,
-      xUrl: url
-    }
-  } catch (error) {
-    console.error('Error extracting tweet data:', error)
-    return {
-      title: 'Tweet',
-      image: '',
-      description: '',
-      url: url,
-      xUrl: url,
-      author: ''
-    }
-  }
-}
-
-const extractArticleData = async (url: string): Promise<ArticleData> => {
-  try {
-    const response = await axios.get(url)
-    const $ = cheerio.load(response.data)
-    
-    let title = ''
-    let image = ''
-    let description = ''
-
-    // Extract title
-    const titleSelectors = [
-      'h1',
-      'article h1',
-      'meta[property="og:title"]',
-      'meta[name="twitter:title"]',
-      'title'
-    ]
-
-    for (const selector of titleSelectors) {
-      const element = $(selector)
-      if (element.length) {
-        title = element.is('meta') ? element.attr('content') || '' : element.text().trim()
-        if (title) break
-      }
-    }
-
-    // Extract image
-    const imageSelectors = [
-      'meta[property="og:image"]',
-      'meta[name="twitter:image"]',
-      'link[rel="image_src"]',
-      'article img',
-      '.article-content img',
-      '.post-content img'
-    ]
-
-    for (const selector of imageSelectors) {
-      const element = $(selector)
-      if (element.length) {
-        let imgSrc = element.is('meta') ? element.attr('content') || '' : element.attr('src') || ''
-        
-        if (imgSrc) {
-          try {
-            if (!imgSrc.startsWith('http')) {
-              imgSrc = new URL(imgSrc, url).href
-            }
-            image = imgSrc
-            break
-          } catch (e) {
-            console.warn('Invalid image URL:', imgSrc)
-            continue
-          }
-        }
-      }
-    }
-
-    // Extract description
-    const descriptionSelectors = [
-      'meta[name="description"]',
-      'meta[property="og:description"]',
-      'meta[name="twitter:description"]',
-      'article p',
-      '.article-content p',
-      '.post-content p'
-    ]
-
-    for (const selector of descriptionSelectors) {
-      const element = $(selector)
-      if (element.length) {
-        description = element.is('meta') ? element.attr('content') || '' : element.text().trim()
-        if (description) break
-      }
-    }
-
-    // Get canonical URL
-    const canonicalUrl = $('link[rel="canonical"]').attr('href')
-    const ogUrl = $('meta[property="og:url"]').attr('content')
-    
-    const finalUrl = canonicalUrl || ogUrl || url
-
-    return {
-      title: title || 'Untitled Article',
-      image,
-      description,
-      url: finalUrl
-    }
-  } catch (error) {
-    console.error('Error extracting article data:', error)
-    return {
-      title: 'Untitled Article',
-      image: '',
-      description: '',
-      url: url
-    }
-  }
-}
-
 export const handler: Handler = async (event) => {
   // Add CORS headers
   const headers = {
@@ -256,7 +125,7 @@ export const handler: Handler = async (event) => {
       throw new Error('Missing request body');
     }
 
-    const { article, level = 1 } = JSON.parse(event.body);
+    const { article, level = 1 } = JSON.parse(event.body) as ArticleTokenRequest
 
     if (!article) {
       return {
@@ -275,13 +144,10 @@ export const handler: Handler = async (event) => {
       }
     }
 
-    const { url, title, description: articleDesc } = article;
-
-    // Check if it's a Twitter/X post
-    const isXPost = url.includes('x.com') || url.includes('twitter.com')
+    const { isXPost, title, description: articleDesc } = article;
     
     const prompt = `Article Title: ${title}\nDescription: ${articleDesc}\nType: ${isXPost ? 'Social Media Post' : 'News Article'}\n\nGenerate a ${isXPost ? 'tweet-based' : 'news-based'} meme coin.`;
-    const generatedPrompt = systemPrompt(prompt, level)
+    const generatedPrompt = systemPrompt(level)
 
     const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
