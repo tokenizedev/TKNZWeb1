@@ -92,8 +92,8 @@ const systemPrompt = (level: number) => `You are a blockchain tokenization exper
 "ticker: "TKNZ",
 "description": "Tokenize Anything, Tokenize Everything. TKNZ empowers users to create their own tokens on Pump.fun directly from any web page or social media post. With this tool, the friction of launching a token is removed. No need to copy paste links or images. Just one click and the content is tokenized onto the blockchain forever!",
 "image": "https://tknz.fun/assets/hero.png",
-"xURL": "https://x.com/tknzfun",
-"url": "https://tknz.fun",
+"xUrl": https://x.com/tknzfun,
+"url": https://tknz.fun,
 
 Output Format:
 {
