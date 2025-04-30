@@ -26,7 +26,7 @@ const systemPrompt = (level: number) => `You are a blockchain tokenization exper
 - **Name Format:**
   - For tweets with images: Use format "[Subject] Image" (e.g., "Bitcoin Chart Image", "Cat Photo")
   - For text-only tweets: Use 2-4 key words that summarize the main point
-- **Ticker:** Direct abbreviation of key words (2-5 chars recommended, but can be up to 15)
+- **Ticker:** Direct abbreviation of key words (2-6 chars recommended, but can be up to 15)
 - **Description:**
   - Long tweets (>100 chars): Summarize the key point in one clear sentence
   - Short tweets: Use the exact tweet text
@@ -85,6 +85,8 @@ const systemPrompt = (level: number) => `You are a blockchain tokenization exper
 5. No "coin" or "token" words
 6. For Level 0, if it's a retweet or quote tweet, focus on the quoted content
 7. For Level 0, if there's an image, explicitly mention it in the name
+8. If there is a name used in the headline or byline of a story or in a tweet, the name should be used in the ticker and title of the coin. ie: 
+"Valerie the dachshund is found safe and well after 529 days on the run on South Australian island" Should output "name": "Valerie the Daschund", "ticker": "VAL"
 
 Output Format:
 {
