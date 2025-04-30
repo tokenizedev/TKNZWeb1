@@ -81,7 +81,7 @@ function App() {
                     <Twitter className="w-5 h-5" />
                     <span>Twitter</span>
                   </a>
-                   <a href="https://x.com/TopXilef" target="_blank" rel="noopener noreferrer" 
+                   <a href="https://x.com/0Xilef" target="_blank" rel="noopener noreferrer" 
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
                     <Twitter className="w-5 h-5" />
                     <span>Developer</span>
