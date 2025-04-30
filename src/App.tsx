@@ -7,7 +7,7 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       {/* Contract Address Banner */}
       <div className="bg-[#00FF9D] text-black py-2 px-4 text-center font-medium">
-        Contract Address: Coming Soon!
+        Contract Address: AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump
       </div>
 
       {/* Navigation */}
