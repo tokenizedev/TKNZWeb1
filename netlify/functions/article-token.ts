@@ -25,8 +25,9 @@ const systemPrompt = (level: number) => `You are a blockchain tokenization exper
 - **Core Principle:** 100% literal, no creativity, just facts
 - **Name Format:**
   - For tweets with images: Use format "[Subject] Image" (e.g., "Bitcoin Chart Image", "Cat Photo")
-  - For text-only tweets: Use 2-4 key words that summarize the main point
-- **Ticker:** Direct abbreviation of key words (2-6 chars recommended, but can be up to 15)
+  - For text-only tweets: Use 2-4 key words that summarize the main point.
+  - Limit to a maximum of 32 characters per name.
+- **Ticker:** Direct abbreviation of key words (2-6 chars recommended, but can be up to 10)
 - **Description:**
   - Long tweets (>100 chars): Summarize the key point in one clear sentence
   - Short tweets: Use the exact tweet text
@@ -81,11 +82,12 @@ const systemPrompt = (level: number) => `You are a blockchain tokenization exper
 1. Level 0 must be COMPLETELY LITERAL - no creative elements
 2. All levels must clearly reference the actual content
 3. Never use generic names
-4. Ticker suggestions should be 2-5 characters, all caps (though user can input up to 15)
-5. No "coin" or "token" words
-6. For Level 0, if it's a retweet or quote tweet, focus on the quoted content
-7. For Level 0, if there's an image, explicitly mention it in the name
-8. If there is a name used in the headline or byline of a story or in a tweet, the name should be used in the ticker and title of the coin. ie: 
+4. Names should be no more than 32 characters
+5. Ticker suggestions should be 2-5 characters, all caps (though user can input up to 10)
+6. No "coin" or "token" words
+7. For Level 0, if it's a retweet or quote tweet, focus on the quoted content
+8. For Level 0, if there's an image, explicitly mention it in the name
+9. If there is a name used in the headline or byline of a story or in a tweet, the name should be used in the ticker and title of the coin. ie: 
 "Valerie the dachshund is found safe and well after 529 days on the run on South Australian island" Should output "name": "Valerie the Daschund", "ticker": "VAL"
 
 
