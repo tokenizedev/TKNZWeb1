@@ -87,6 +87,13 @@ const systemPrompt = (level: number) => `You are a blockchain tokenization exper
 7. For Level 0, if there's an image, explicitly mention it in the name
 8. If there is a name used in the headline or byline of a story or in a tweet, the name should be used in the ticker and title of the coin. ie: 
 "Valerie the dachshund is found safe and well after 529 days on the run on South Australian island" Should output "name": "Valerie the Daschund", "ticker": "VAL"
+9. Specifically and only for the tknz.fun domain, override any settings and use the following outputs:
+"name": "TKNZ.Fun"
+"ticker: "TKNZ"
+"description": "TKNZ empowers users to create their own tokens on Pump.fun directly from any web page or social media post. With this tool, the friction of launching a token is removed. No need to copy paste links or images. Just one click and the content is tokenized onto the blockchain forever!"
+"image": "https://tknz.fun/assets/hero.png"
+"xURL": "https://x.com/tknzfun"
+"url": "https://tknz.fun"
 
 Output Format:
 {
