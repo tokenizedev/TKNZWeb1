@@ -20,10 +20,13 @@ function App() {
               className="h-8"
             />
           </div>
-          <button className="bg-[#00FF9D] text-black px-6 py-2 rounded-full flex items-center space-x-2 hover:bg-[#00CC7D] transition-colors">
-            <Download className="w-4 h-4" />
-            <span>Download the Extension</span>
-          </button>
+        <a href="https://chromewebstore.google.com/detail/eejballiemiamlndhkblapmlmjdgaaoi?utm_source=item-share-cb" target="_blank" rel="noopener noreferrer">
+  <button className="bg-[#00FF9D] text-black px-6 py-2 rounded-full flex items-center space-x-2 hover:bg-[#00CC7D] transition-colors">
+    <Download className="w-4 h-4" />
+    <span>Download the Extension</span>
+  </button>
+</a>
+
         </div>
       </nav>
 
