@@ -99,7 +99,7 @@ function App() {
 
                     <a href="https://t.me/tknzfun"  rel="noopener noreferrer"
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
-                    < className="w-5 h-5" />
+                    <Telegram className="w-5 h-5" />
                     <span>Telegram/span>
                   </a>
                 </div>
