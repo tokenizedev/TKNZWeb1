@@ -99,9 +99,23 @@ function App() {
 
                     <a href="https://t.me/tknzfun"  rel="noopener noreferrer"
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
-                    <Rocket className="w-5 h-5" />
+                    <MessageCircle className="w-5 h-5" />
                     <span>Telegram</span>
                   </a>
+
+                  <a href="https://github.com/tokenizedev/tknzv1"  rel="noopener noreferrer"
+                     className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
+                    <Github className="w-5 h-5" />
+                    <span>Github Extension</span>
+                  </a>
+
+                  <a href="https://github.com/tokenizedev/TKNZWeb1"  rel="noopener noreferrer"
+                     className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
+                    <Github className="w-5 h-5" />
+                    <span>Github Front End</span>
+                  </a>
+
+                 
                 </div>
               </div>
 
