@@ -86,15 +86,21 @@ function App() {
                     <Twitter className="w-5 h-5" />
                     <span>Developer</span>
                   </a>
-                  <a href="#" onClick="alert('DexScreener will be updated soon')" rel="noopener noreferrer"
+                  <a href="https://dexscreener.com/solana/da4x4d6rxu7yyaeldfev36tubva3jdzdkzcaevgr1p3p"  rel="noopener noreferrer"
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
                     <BarChart3 className="w-5 h-5" />
                     <span>Dex Screener</span>
                   </a>
-                  <a href="#" onClick="alert('Pump.Fun link will be updated soon')" rel="noopener noreferrer"
+                  <a href="https://pump.fun/coin/AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump?include-nsfw=true"  rel="noopener noreferrer"
                      className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
                     <Rocket className="w-5 h-5" />
                     <span>Pump.fun</span>
+                  </a>
+
+                    <a href="https://t.me/tknzfun"  rel="noopener noreferrer"
+                     className="flex items-center space-x-3 text-gray-600 hover:text-[#00FF9D] transition-colors">
+                    < className="w-5 h-5" />
+                    <span>Telegram/span>
                   </a>
                 </div>
               </div>
