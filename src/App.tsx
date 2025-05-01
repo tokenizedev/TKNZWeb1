@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, ChevronRight, Clock, Share2, Wallet, ArrowRightLeft, GitBranch as BrandTiktok, Sparkles, Users, Twitter, BarChart3, Rocket } from 'lucide-react';
+import { Download, ChevronRight, Clock, Share2, Wallet, ArrowRightLeft, GitBranch as BrandTiktok, Sparkles, Users, Twitter, BarChart3, Rocket, Github, MessageCircle } from 'lucide-react';
 import { Tweet } from 'react-tweet';
 
 function App() {
