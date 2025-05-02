@@ -2,13 +2,174 @@
 @tailwind components;
 @tailwind utilities;
 
-.dark {
-  --tw-prose-links: #fff;
-  --tw-prose-link-hover: #ddd;
-  --tw-prose-link-underline: #fff;
-  --tw-prose-link-underline-hover: #ddd;
-  --tw-prose-link-underline-offset: 0.25em;
-  --tw-prose-link-underline-offset-hover: 0.25em;
+@layer base {
+  body {
+    background: #000000;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+  }
 }
 
+@keyframes glitch {
+  0% {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    transform: perspective(200px) rotateX(0deg);
+    text-shadow: -2px 3px 0 rgba(255, 13, 157, 0.75),
+                2px -3px 0 rgba(0, 255, 157, 0.75);
+  }
+  5%, 95% {
+    clip-path: polygon(0 15%, 100% 15%, 100% 85%, 0 85%);
+    transform: perspective(200px) rotateX(3deg);
+  }
+  10%, 90% {
+    transform: perspective(200px) rotateX(-3deg);
+  }
+  15%, 85% {
+    transform: perspective(200px) rotateX(3deg);
+    text-shadow: -4px 3px 0 rgba(255, 13, 157, 0.75),
+                4px -3px 0 rgba(0, 255, 157, 0.75);
+  }
+  49% {
+    clip-path: polygon(0 40%, 100% 40%, 100% 60%, 0 60%);
+    transform: perspective(200px) rotateX(0deg);
+  }
+  50% {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    transform: perspective(200px) rotateX(0deg);
+    text-shadow: 2px -3px 0 rgba(255, 13, 157, 0.75),
+                -2px 3px 0 rgba(0, 255, 157, 0.75);
+  }
+}
 
+.matrix-bg {
+  background: 
+    linear-gradient(rgba(0, 0, 0, 0.92), rgba(0, 0, 0, 0.92)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(0, 255, 157, 0.1) 0px,
+      rgba(0, 255, 157, 0.1) 1px,
+      transparent 1px,
+      transparent 20px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 255, 157, 0.1) 0px,
+      rgba(0, 255, 157, 0.1) 1px,
+      transparent 1px,
+      transparent 20px
+    );
+}
+
+.neon-glow {
+  text-shadow: 0 0 10px rgba(0, 255, 157, 0.5),
+               0 0 20px rgba(255, 13, 157, 0.3),
+               0 0 30px rgba(0, 255, 157, 0.2);
+}
+
+.neon-box {
+  box-shadow: 0 0 10px rgba(0, 255, 157, 0.2),
+              0 0 20px rgba(255, 13, 157, 0.1),
+              inset 0 0 30px rgba(0, 255, 157, 0.05);
+}
+
+.scanlines {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 255, 157, 0.05) 0.5%,
+    transparent 1%
+  );
+  animation: scanline 8s linear infinite;
+}
+
+@keyframes scanline {
+  0% {
+    background-position: 0 -100vh;
+  }
+  100% {
+    background-position: 0 100vh;
+  }
+}
+
+.terminal-text {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+}
+
+.cyber-border {
+  border: 1px solid rgba(0, 255, 157, 0.2);
+  position: relative;
+}
+
+.cyber-border::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 1px solid rgba(255, 13, 157, 0.1);
+  pointer-events: none;
+}
+
+.cyber-input {
+  background: rgba(0, 255, 157, 0.05);
+  border: 1px solid rgba(0, 255, 157, 0.2);
+  transition: all 0.3s ease;
+}
+
+.cyber-input:focus {
+  background: rgba(0, 255, 157, 0.1);
+  border-color: rgba(255, 13, 157, 0.4);
+}
+
+.cyber-button {
+  position: relative;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(0, 255, 157, 0.2);
+  background: rgba(0, 255, 157, 0.05);
+  transition: all 0.3s ease;
+}
+
+.cyber-button:hover {
+  background: rgba(255, 13, 157, 0.1);
+  border-color: rgba(0, 255, 157, 0.4);
+}
+
+.cyber-button::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 1px solid rgba(0, 255, 157, 0.1);
+  pointer-events: none;
+}
+
+.cyber-row {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.cyber-row:hover {
+  background: rgba(0, 255, 157, 0.1);
+}
+
+.glitch-text {
+  position: relative;
+  text-shadow: 2px -3px 0 rgba(255, 13, 157, 0.75),
+              -2px 3px 0 rgba(0, 255, 157, 0.75);
+  animation: glitch 2s infinite;
+  letter-spacing: 0.2em;
+  font-weight: bold;
+  transform-style: preserve-3d;
+  transform: perspective(200px);
+}
+
+.error-text {
+  color: #ff3e3e;
+  text-shadow: 0 0 10px rgba(255, 62, 62, 0.5);
+  letter-spacing: 0.1em;
+  font-weight: bold;
+}
