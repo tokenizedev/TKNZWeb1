@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="%BASE_URL%assets/icon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <title>TKNZ: Tokenize Anything. Tokenize Everything</title>
@@ -19,15 +19,82 @@
   <meta name="twitter:creator" content="@tknzfun">
   <meta name="twitter:title" content="TKNZ: Tokenize Anything. Tokenize Everything">
   <meta name="twitter:description" content="Tokenize any content on the internet in one click">
-  <meta name="twitter:image" content="https://github.com/tokenizedev/TKNZWeb1/blob/main/src/assets/tknzbanner.png?raw=true">
-  <meta name="twitter:url" content="https://tknz.fun">
+  <meta name="twitter:image" content="%BASE_URL%assets/tknzbanner.png" />
+  <meta name="twitter:url" content="https://tknz.fun/" />
 
   <!-- Open Graph -->
   <meta property="og:title" content="TKNZ: Tokenize Anything. Tokenize Everything" />
   <meta property="og:description" content="Tokenize any content on the internet in one click" />
-  <meta property="og:image" content="https://github.com/tokenizedev/TKNZWeb1/blob/main/src/assets/tknzbanner.png?raw=true" />
-  <meta property="og:url" content="https://tknz.fun" />
+  <meta property="og:image" content="%BASE_URL%assets/tknzbanner.png" />
+  <meta property="og:url" content="https://tknz.fun/" />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="TKNZ" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://tknz.fun/" />
+
+  <!-- Twitter Additional -->
+  <meta name="twitter:image:alt" content="TKNZ Banner" />
+  
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://tknz.fun/#organization",
+        "name": "TKNZ",
+        "url": "https://tknz.fun/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tknz.fun/assets/logo.png"
+        },
+        "sameAs": [
+          "https://x.com/tknzfun",
+          "https://t.me/tknzfun",
+          "https://github.com/tokenizedev/TKNZWeb1",
+          "https://github.com/tokenizedev/tknzv1"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://tknz.fun/#website",
+        "url": "https://tknz.fun/",
+        "name": "TKNZ",
+        "publisher": { "@id": "https://tknz.fun/#organization" },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://tknz.fun/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://tknz.fun/#webpage",
+        "url": "https://tknz.fun/",
+        "name": "TKNZ: Tokenize Anything. Tokenize Everything",
+        "isPartOf": { "@id": "https://tknz.fun/#website" },
+        "description": "Tokenize any content on the internet in one click",
+        "inLanguage": "en",
+        "breadcrumb": {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://tknz.fun/"
+            }
+          ]
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 
   <body>
