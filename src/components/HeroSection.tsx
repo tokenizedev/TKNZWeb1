@@ -1,0 +1,104 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowRight, ExternalLink, Copy, Check } from 'lucide-react';
+
+const HeroSection: React.FC = () => {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const CONTRACT_ADDRESS = "AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump";
+  
+  useEffect(() => {
+    const titleElement = titleRef.current;
+    if (!titleElement) return;
+    
+    // Simple glitch effect
+    const glitchInterval = setInterval(() => {
+      titleElement.classList.add('glitch');
+      setTimeout(() => {
+        titleElement.classList.remove('glitch');
+      }, 200);
+    }, 3000);
+    
+    return () => clearInterval(glitchInterval);
+  }, []);
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(CONTRACT_ADDRESS);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  return (
+    <section className="relative overflow-hidden min-h-screen bg-black flex items-center">
+      {/* Animated background grid */}
+      <div className="absolute inset-0 grid-bg"></div>
+      
+      {/* Matrix-like falling characters */}
+      <div className="matrix-rain absolute inset-0 opacity-20"></div>
+      
+      <div className="container mx-auto px-4 relative z-10 py-20">
+        <div className="max-w-3xl mx-auto text-center">
+          <h1 
+            ref={titleRef}
+            className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 text-white glitch-container"
+          >
+            <span className="text-green-400">TKNZ</span> Anything.
+            <br />
+            <span className="text-green-400">TKNZ</span> Everything.
+          </h1>
+          
+          <p className="text-xl md:text-2xl text-gray-300 mb-8 leading-relaxed">
+            The only wallet with built-in Pump.fun deployment.
+            <br className="hidden md:block" /> Tokenize the web in 1 click. Live on Solana in 5 seconds.
+          </p>
+          
+          <div className="flex flex-col items-center gap-4">
+            <a 
+              href="https://chromewebstore.google.com/detail/tknz/eejballiemiamlndhkblapmlmjdgaaoi?utm_source=item-share-cb"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-green-500 hover:bg-green-400 text-black px-8 py-3 rounded-md font-semibold transition-all hover:scale-105 hover:shadow-lg hover:shadow-green-500/30 flex items-center justify-center w-full sm:w-auto"
+            >
+              Launch a Token
+              <ArrowRight size={20} className="ml-2" />
+            </a>
+
+            <a 
+              href="https://dexscreener.com/solana/da4x4d6rxu7yyaeldfev36tubva3jdzdkzcaevgr1p3p"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-transparent hover:bg-white/10 text-white border border-green-500/50 px-8 py-3 rounded-md font-semibold transition-all w-full sm:w-auto flex items-center justify-center"
+            >
+              Buy $TKNZ
+              <ExternalLink size={20} className="ml-2" />
+            </a>
+
+            <div className="bg-black/40 backdrop-blur-sm border border-green-500/30 rounded-md px-4 py-2 flex items-center gap-2 mt-2">
+              <span className="text-gray-400 text-sm">Contract:</span>
+              <code className="text-green-400 font-mono text-sm">{CONTRACT_ADDRESS}</code>
+              <button
+                onClick={copyToClipboard}
+                className="text-green-400 hover:text-green-300 p-1 rounded transition-colors"
+              >
+                {copySuccess ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Scroll indicator */}
+      <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 flex flex-col items-center">
+        <span className="text-gray-400 text-sm mb-2">Scroll Down</span>
+        <div className="w-6 h-10 border-2 border-green-500/50 rounded-full flex justify-center">
+          <div className="w-1.5 h-3 bg-green-400 rounded-full animate-pulse-down mt-2"></div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export default HeroSection;
