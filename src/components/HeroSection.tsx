@@ -76,15 +76,18 @@ const HeroSection: React.FC = () => {
               <ExternalLink size={20} className="ml-2" />
             </a>
 
-            <div className="bg-black/40 backdrop-blur-sm border border-green-500/30 rounded-md px-4 py-2 flex items-center gap-2 mt-2">
+            <div className="bg-black/40 backdrop-blur-sm border border-green-500/30 rounded-md p-3 mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-2">
               <span className="text-gray-400 text-sm">Contract:</span>
-              <code className="text-green-400 font-mono text-sm">{CONTRACT_ADDRESS}</code>
-              <button
-                onClick={copyToClipboard}
-                className="text-green-400 hover:text-green-300 p-1 rounded transition-colors"
-              >
-                {copySuccess ? <Check size={16} /> : <Copy size={16} />}
-              </button>
+              <div className="flex flex-1 items-center gap-2 w-full overflow-hidden">
+                <code className="text-green-400 font-mono text-sm truncate">{CONTRACT_ADDRESS}</code>
+                <button
+                  onClick={copyToClipboard}
+                  className="text-green-400 hover:text-green-300 p-1.5 rounded transition-colors flex-shrink-0"
+                  aria-label="Copy contract address"
+                >
+                  {copySuccess ? <Check size={18} /> : <Copy size={18} />}
+                </button>
+              </div>
             </div>
           </div>
         </div>
