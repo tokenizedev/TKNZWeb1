@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ExternalLink, Clock, AlertCircle } from 'lucide-react';
 
 interface TokenData {
@@ -16,13 +16,15 @@ interface TokenData {
 
 const LiveTicker: React.FC = () => {
   const [tokens, setTokens] = useState<TokenData[]>([]);
-  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [duration, setDuration] = useState<number>(20);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const isMounted = useRef<boolean>(true);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  useEffect(() => {
-    const fetchTokens = async () => {
+  const fetchTokens = useCallback(async () => {
       try {
         setError(null);
         const response = await fetch(
@@ -96,12 +98,33 @@ const LiveTicker: React.FC = () => {
       } finally {
         setIsLoading(false);
       }
-    };
 
-    if (hasMore && page === 1) {
-      fetchTokens();
-    }
-  }, [page, hasMore]);
+  }, []);
+
+  useEffect(() => {
+    fetchTokens();
+    const interval = setInterval(fetchTokens, 10000);
+    return () => clearInterval(interval);
+  }, [fetchTokens]);
+
+  useEffect(() => {
+    const calculateDuration = () => {
+      if (!trackRef.current) return;
+      const trackWidth = trackRef.current.scrollWidth;
+      const tokenWidth = trackWidth / 2;
+      const speed = 100; // pixels per second
+      setDuration(tokenWidth / speed);
+    };
+    calculateDuration();
+    window.addEventListener('resize', calculateDuration);
+    return () => window.removeEventListener('resize', calculateDuration);
+  }, [tokens]);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const formatTimeAgo = (dateString: number) => {
     const date = new Date(dateString);
@@ -121,6 +144,7 @@ const LiveTicker: React.FC = () => {
       'https://images.pexels.com/photos/844124/pexels-photo-844124.jpeg?auto=compress&cs=tinysrgb&w=200'
     );
   };
+  const tickerItems = useMemo(() => [...tokens, ...tokens], [tokens]);
 
   if (isLoading && tokens.length === 0) {
     return (
@@ -141,9 +165,13 @@ const LiveTicker: React.FC = () => {
         </div>
       )}
       <div className="ticker-container h-12 overflow-hidden">
-        <div className="ticker-track py-2">
-          {tokens.length > 0 ? (
-            [...tokens, ...tokens].map((token, index) => (
+        <div
+          ref={trackRef}
+          className="ticker-track py-2"
+          style={{ animationDuration: `${duration}s` }}
+        >
+          {tickerItems.length > 0 ? (
+            tickerItems.map((token, index) => (
               <a
                 key={`${token.address}-${index}`}
                 href={`https://pump.fun/coin/${token.address}`}

@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:netlify": "netlify dev",
     "build": "vite build && mkdir -p dist/netlify/functions && cp -r netlify/functions/* dist/netlify/functions/",
+    "deploy": "npm run build && netlify deploy --prod",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test"

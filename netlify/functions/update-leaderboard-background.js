@@ -296,6 +296,16 @@ export const handler = async (_event, _context) => {
       } else {
         console.warn(`Skipping ZADD for ${address} due to invalid marketCap: ${marketCap}`);
       }
+
+      // Update the leaderboard:launchTime sorted set with the launchTime
+      // Only add/update if launchTime is a valid number
+      const launchTime = tokenDetails.launchTime; // Explicitly get launchTime for clarity
+      if (typeof launchTime === 'number' && !isNaN(launchTime)) {
+        pipeline.zadd('leaderboard:launchTime', { score: launchTime, member: address });
+        console.log(`Pipelining ZADD for leaderboard:launchTime: ${address} with score ${launchTime}`);
+      } else {
+        console.warn(`Skipping ZADD for leaderboard:launchTime for ${address} due to invalid launchTime: ${launchTime}`);
+      }
     }
     
     const results = await pipeline.exec();
