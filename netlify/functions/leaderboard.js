@@ -120,4 +120,26 @@ const createLeaderboardHandler = (redisClient) => {
 };
 
 // Export Netlify function handler
-export const handler = createLeaderboardHandler(redis);
+// Wrap the base handler to add CORS headers
+const baseHandler = createLeaderboardHandler(redis);
+
+export const handler = async (event, context) => {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers
+    };
+  }
+
+  const response = await baseHandler(event, context);
+  return {
+    ...response,
+    headers
+  };
+};
