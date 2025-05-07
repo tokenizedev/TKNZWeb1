@@ -22,17 +22,3 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      # Add step to copy functions
-      - name: Deploy Netlify
-        run: |
-          echo "NETLIFY_DEPLOY_KEY=$NETLIFY_DEPLOY_KEY" >> .env
-          echo "NETLIFY_SITE_ID=$NETLIFY_SITE_ID" >> .env
-
-          mkdir -p dist/netlify/functions
-          cp -r netlify/functions/* dist/netlify/functions/
-
-          ./node_modules/.bin/netlify deploy --dir=dist --prod
-        env:
-          NETLIFY_DEPLOY_KEY: ${{ secrets.NETLIFY_DEPLOY_KEY }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
