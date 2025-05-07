@@ -28,7 +28,7 @@ const LiveTicker: React.FC = () => {
       try {
         setError(null);
         const response = await fetch(
-          `https://tknz.fun/.netlify/functions/leaderboard?page=${page}`,
+          `https://tknz.fun/.netlify/functions/leaderboard?sort=launchTime&page=${page}`,
           {
             headers: {
               Accept: 'application/json',
