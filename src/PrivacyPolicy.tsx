@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 function PrivacyPolicy() {
   return (
@@ -81,13 +82,17 @@ function PrivacyPolicy() {
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto flex flex-col items-center">
             <img 
-              src="assets/logo.png" 
+              src="/assets/logo.png" 
               alt="TKNZ Logo" 
               className="h-8 mb-4"
             />
             <div className="flex items-center space-x-4 mb-4">
-              <a href="/" className="text-gray-400 hover:text-[#00FF9D] transition-colors">Home</a>
-              <a href="/privacy-policy" className="text-gray-400 hover:text-[#00FF9D] transition-colors">Privacy Policy</a>
+              <Link to="/" className="text-gray-400 hover:text-[#00FF9D] transition-colors">
+                Home
+              </Link>
+              <Link to="/privacy-policy" className="text-gray-400 hover:text-[#00FF9D] transition-colors">
+                Privacy Policy
+              </Link>
             </div>
             <p className="text-gray-400">© 2025 TKNZ. All rights reserved.</p>
           </div>
