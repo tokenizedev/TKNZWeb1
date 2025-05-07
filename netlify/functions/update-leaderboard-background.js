@@ -12,9 +12,6 @@ const { mplTokenMetadata, fetchMetadataFromSeeds } = pkg;
 
 const SYSTEM_TOKEN_ADDRESS = 'AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump';
 const APPROXIMATE_SYSTEM_TOKEN_LAUNCH_TIME = 1746046800000;
-// Schedule to run every 2 minutes
-export const config = { schedule: '*/2 * * * *' };
-
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -249,7 +246,33 @@ async function buildLeaderboardFromSolana() {
 }
 
 /** Netlify Scheduled Function to update the leaderboard in Upstash Redis */
-export const handler = async (_event, _context) => {
+export const handler = async (event, _context) => {
+  // Check Authorization header if this is an HTTP request (not a scheduled run)
+  if (event && event.headers) {
+    const authHeader = event.headers.authorization || event.headers.Authorization;
+    if (!authHeader) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: 'Authorization header is required' })
+      };
+    }
+    
+    // Verify the authorization token
+    // You can use a simple token comparison or more advanced JWT validation
+    const expectedToken = process.env.WEBHOOK_SECRET;
+    if (!expectedToken || authHeader !== `Bearer ${expectedToken}`) {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({ error: 'Invalid authorization token: ' + (expectedToken ? 'E01' : 'E02') })
+      };
+    }
+  } else {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Invalid request' })
+    }
+  }
+  
   const redis = new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
