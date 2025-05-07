@@ -10,7 +10,8 @@ import { publicKey as umiPublicKey } from '@metaplex-foundation/umi';
 import pkg from '@metaplex-foundation/mpl-token-metadata';
 const { mplTokenMetadata, fetchMetadataFromSeeds } = pkg;
 
-
+const SYSTEM_TOKEN_ADDRESS = 'AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump';
+const APPROXIMATE_SYSTEM_TOKEN_LAUNCH_TIME = 1746046800000;
 // Schedule to run every 2 minutes
 export const config = { schedule: '*/2 * * * *' };
 
@@ -95,9 +96,31 @@ async function buildLeaderboardFromSolana() {
       }
     }
   });
+  // Fetch token launched events to capture launch timestamps
+  const launchedSnapshot = await db
+    .collection('events')
+    .where('eventName', '==', 'token_launched')
+    .get();
+  const launchTimestamps = new Map();
+  launchedSnapshot.forEach((doc) => {
+    const data = doc.data();
+    if (data.contractAddress && data.timestamp) {
+      let ts = data.timestamp;
+      if (ts.toMillis) {
+        ts = ts.toMillis();
+      }
+      launchTimestamps.set(data.contractAddress, ts);
+    }
+  });
+
+  if (!launchTimestamps.has(SYSTEM_TOKEN_ADDRESS)) {
+    console.log(`Setting launch time for system token ${SYSTEM_TOKEN_ADDRESS} to ${APPROXIMATE_SYSTEM_TOKEN_LAUNCH_TIME}`);
+    launchTimestamps.set(SYSTEM_TOKEN_ADDRESS, APPROXIMATE_SYSTEM_TOKEN_LAUNCH_TIME);
+  }
+
   // Ensure system token is included
-  if (!uniqueTokensMap.has('AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump')) {
-    uniqueTokensMap.set('AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump', 'TKNZ_SYSTEM');
+  if (!uniqueTokensMap.has(SYSTEM_TOKEN_ADDRESS)) {
+    uniqueTokensMap.set(SYSTEM_TOKEN_ADDRESS, 'TKNZ_SYSTEM');
   }
   const addresses = Array.from(uniqueTokensMap.keys());
 
@@ -131,7 +154,7 @@ async function buildLeaderboardFromSolana() {
     let supply = 0;
     let fetchedName = null;
     let fetchedSymbol = null;
-    let fetchedLogo = '/default-token.svg'; // Default logo
+    let fetchedLogo = 'https://images.pexels.com/photos/844124/pexels-photo-844124.jpeg?auto=compress&cs=tinysrgb&w=200';
     let fetchedCreator = uniqueTokensMap.get(address) || 'UNKNOWN'; // Get initial creator from Firestore event
     let launchTime = null;
 
@@ -190,7 +213,13 @@ async function buildLeaderboardFromSolana() {
     // Fetch launch time
     try {
         console.log(`Fetching launch time for ${address}`);
-        launchTime = await fetchTokenMintTimestamp(connection, address);
+        if (launchTimestamps.has(address)) {
+            console.log(`Launch time found for ${address}: ${launchTimestamps.get(address)}`);
+            launchTime = launchTimestamps.get(address);
+        } else {
+            console.log(`Launch time not found for ${address}, fetching from Solana`);
+            launchTime = await fetchTokenMintTimestamp(connection, address);
+        }
     } catch (err) {
         console.warn(`Failed to fetch launch time for ${address}: ${err}`);
         launchTime = Date.now(); // Fallback
