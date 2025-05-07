@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const Footer: React.FC = () => {
   return (
@@ -7,7 +8,7 @@ const Footer: React.FC = () => {
         <div className="flex flex-col md:flex-row justify-between items-center">
           <div className="mb-4 md:mb-0">
             <img 
-              src="assets/logo.png" 
+              src="/assets/logo.png" 
               alt="TKNZ.FUN" 
               className="h-8 w-auto"
             />
@@ -16,12 +17,12 @@ const Footer: React.FC = () => {
             <span className="text-gray-500 text-sm">
               © 2025 TKNZ.FUN. All rights reserved.
             </span>
-            <a 
-              href="https://tknz.fun/privacy-policy" 
+            <Link
+              to="/privacy-policy"
               className="text-gray-500 hover:text-green-400 text-sm transition-colors"
             >
               Privacy Policy
-            </a>
+            </Link>
           </div>
         </div>
       </div>
