@@ -108,6 +108,83 @@ npm run dev
 - Edit the Solana contract address in `package.json` under the `tknz.contract` field.
 - Tailwind and PostCSS configs live in `tailwind.config.js` and `postcss.config.js`.
 - Environment variables for Netlify Functions can be set in the Netlify dashboard or `.env` files.
+  
+## API Reference
+
+### Leaderboard Endpoint
+
+`GET /.netlify/functions/leaderboard?page=<number>`
+
+Fetches a paginated list of top tokens by market cap.
+
+#### Query Parameters
+
+- `page` (integer, optional): Page number to retrieve. Defaults to `1`. Each page returns 25 entries.
+
+#### Response
+
+Status: `200 OK`
+
+```json
+{
+  "page": 1,
+  "perPage": 25,
+  "entries": [
+    {
+      "address": "TokenMintAddressString",
+      "marketCap": 12345678.90,
+      "name": "TokenName",
+      "symbol": "SYM",
+      "logoURI": "https://.../logo.png",
+      "price": 0.12345678,
+      "supply": 1000000000,
+      "creatorWallet": "CreatorWalletAddress",
+      "launchTime": 1672531200000,
+      "lastUpdated": 1675132800000
+    }
+    // … more entries
+  ]
+}
+```
+
+##### Fields
+
+- `page`: Current page number.
+- `perPage`: Number of entries per page (always 25).
+- `entries`: Array of token objects:
+  - `address` (string): Mint address.
+  - `marketCap` (number): Market capitalization (score from the sorted set).
+  - `name` (string): Token name.
+  - `symbol` (string): Token symbol.
+  - `logoURI` (string): URL to token logo.
+  - `price` (number): Price per token.
+  - `supply` (number): Total token supply.
+  - `creatorWallet` (string): Creator’s wallet address.
+  - `launchTime` (number): UNIX timestamp (ms) of token launch.
+  - `lastUpdated` (number): UNIX timestamp (ms) of last metadata update.
+
+#### Errors
+
+- `500 Internal Server Error`: Failed to fetch leaderboard or pipeline execution error.
+
+#### Example
+
+> Request:
+>
+> ```bash
+> curl "https://your-site.netlify.app/.netlify/functions/leaderboard?page=2"
+> ```
+>
+> Response:
+> ```json
+> {
+>   "page": 2,
+>   "perPage": 25,
+>   "entries": [
+>     { /* ... */ }
+>   ]
+> }
+> ```
 
 ## Roadmap
 - [ ] Official Chrome Web Store release
