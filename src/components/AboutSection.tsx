@@ -91,14 +91,19 @@ No setup. No coding. Just TKNZ it.
                 </div>
               </div>
               <div className="pt-6">
-                <video 
+                <video
                   className="w-full h-auto rounded-b-lg"
+                  preload="metadata"
+                  width="100%"
+                  poster="/assets/video/demotknz_poster.webp"
                   autoPlay 
                   loop 
                   muted 
                   playsInline
-                  src="/assets/demotknz.mp4"
                 >
+                  <source src="/assets/video/hls/demotknz.m3u8" type="application/x-mpegURL" /> 
+                  <source src="/assets/video/demotknz.webm" type="video/webm" />
+                  <source src="/assets/video/demotknz.mp4" type="video/mp4" />
                   Your browser does not support the video tag.
                 </video>
               </div>
