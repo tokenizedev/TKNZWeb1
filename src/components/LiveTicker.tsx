@@ -143,7 +143,7 @@ const LiveTicker: React.FC = () => {
       <div className="ticker-container h-12 overflow-hidden">
         <div className="ticker-track py-2">
           {tokens.length > 0 ? (
-            tokens.map((token, index) => (
+            [...tokens, ...tokens].map((token, index) => (
               <a
                 key={`${token.address}-${index}`}
                 href={`https://pump.fun/coin/${token.address}`}
