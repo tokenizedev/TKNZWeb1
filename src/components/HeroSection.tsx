@@ -76,13 +76,22 @@ const HeroSection: React.FC = () => {
               <ExternalLink size={20} className="ml-2" />
             </a>
 
-            <div className="bg-black/40 backdrop-blur-sm border border-green-500/30 rounded-md p-3 mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-2">
-              <span className="text-gray-400 text-sm">Contract:</span>
-              <div className="flex flex-1 items-center gap-2 w-full overflow-hidden">
+            <div className="ticker-item bg-black/70 backdrop-blur-sm border border-green-500/30 rounded-md p-3 mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-2 relative overflow-hidden transition-all hover:border-green-400/50 max-w-full hover:scale-[1.02]">
+              <div className="flex items-center gap-2 relative z-10">
+                <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-green-500/50">
+                  <img 
+                    src="/assets/logo.png" 
+                    alt="TKNZ Logo" 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <span className="text-gray-400 text-sm">Contract:</span>
+              </div>
+              <div className="flex flex-1 items-center gap-2 w-full overflow-hidden relative z-10">
                 <code className="text-green-400 font-mono text-sm truncate">{CONTRACT_ADDRESS}</code>
                 <button
                   onClick={copyToClipboard}
-                  className="text-green-400 hover:text-green-300 p-1.5 rounded transition-colors flex-shrink-0"
+                  className="text-green-400 hover:text-green-300 p-1.5 rounded transition-colors flex-shrink-0 hover:bg-green-500/10"
                   aria-label="Copy contract address"
                 >
                   {copySuccess ? <Check size={18} /> : <Copy size={18} />}
