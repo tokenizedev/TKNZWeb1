@@ -5,7 +5,7 @@ const API_URL = 'https://tknz.fun/.netlify/functions/leaderboard?sortBy=launchTi
 
 let lastLaunchTimeCache = null;
 
-export const config = { schedule: '*/30 * * * *' };
+export const config = { schedule: '*/5 * * * *' };
 
 export default async function () {
   try {
