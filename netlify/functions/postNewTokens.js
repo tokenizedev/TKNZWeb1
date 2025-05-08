@@ -1,5 +1,3 @@
-const fetch = require('node-fetch');
-
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const THREAD_ID = 20934; // Forum topic ID for "Token launches"
@@ -7,7 +5,9 @@ const API_URL = 'https://tknz.fun/.netlify/functions/leaderboard?sortBy=launchTi
 
 let lastLaunchTimeCache = null;
 
-exports.handler = async function () {
+export const config = { schedule: '*/30 * * * *' };
+
+export default async function () {
   try {
     const response = await fetch(API_URL);
     const tokens = await response.json();
