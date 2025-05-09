@@ -33,7 +33,33 @@ export const ping = async (event, context) => {
     };
 }
 
-export const handler = async (event, context) => {
+export const handler = async (event, _context) => {
+  // Check Authorization header if this is an HTTP request (not a scheduled run)
+  if (event && event.headers) {
+    const authHeader = event.headers.authorization || event.headers.Authorization;
+    if (!authHeader) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: 'Authorization header is required' })
+      };
+    }
+    
+    // Verify the authorization token
+    // You can use a simple token comparison or more advanced JWT validation
+    const expectedToken = process.env.WEBHOOK_SECRET;
+    if (!expectedToken || authHeader !== `Bearer ${expectedToken}`) {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({ error: 'Invalid authorization token: ' + (expectedToken ? 'E01' : 'E02') })
+      };
+    }
+  } else {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Invalid request' })
+    }
+  }
+
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
