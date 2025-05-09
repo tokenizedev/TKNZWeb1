@@ -76,7 +76,7 @@ export const handler = async (event, context) => {
           const launchTime = token.launchTime || "Unknown";
           const image = token.logoURI || "https://placehold.co/600x400?text=TKNZ";
           const xUrl = token.xUrl;
-          const tknzUrl = `https://hpump.fun/coin/${ticker}`;
+          const tknzUrl = `https://pump.fun/coin/${ticker}`;
   
           // Format the timestamp to a readable date if it's a number
           let formattedLaunchTime = "Unknown";
