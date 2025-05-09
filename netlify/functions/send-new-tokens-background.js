@@ -66,7 +66,7 @@ export const handler = async (event, context) => {
       }
       
       console.log('newTokens', newTokens);
-      
+
       if (newTokens.length > 0) {
         console.log('newTokens', newTokens);
         
@@ -76,7 +76,7 @@ export const handler = async (event, context) => {
           const launchTime = token.launchTime || "Unknown";
           const image = token.logoURI || "https://placehold.co/600x400?text=TKNZ";
           const xUrl = token.xUrl;
-          const tknzUrl = `https://tknz.fun/token/${ticker}`;
+          const tknzUrl = `https://hpump.fun/coin/${ticker}`;
   
           // Format the timestamp to a readable date if it's a number
           let formattedLaunchTime = "Unknown";
