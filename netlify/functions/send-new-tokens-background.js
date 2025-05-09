@@ -63,6 +63,20 @@ export const handler = async (event, _context) => {
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+  if (!BOT_TOKEN || !CHAT_ID) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'BOT_TOKEN or CHAT_ID is not set' })
+    };
+  }
+
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'REDIS_URL or REDIS_TOKEN is not set' })
+    };
+  }
+  
   console.log('BOT_TOKEN', BOT_TOKEN);
   console.log('CHAT_ID', CHAT_ID);
   console.log('THREAD_ID', THREAD_ID);
