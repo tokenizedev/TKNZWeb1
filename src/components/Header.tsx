@@ -62,7 +62,7 @@ const Header: React.FC = () => {
               src="/assets/logo.png" 
               alt="TKNZ.FUN" 
               className="h-16 w-auto mr-2 transition-transform group-hover:scale-110"
-              style="border-radius: 50% object-fit: cover; overflow: hidden;"
+              style={{ borderRadius: '50%', objectFit: 'cover', overflow: 'hidden' }}
             />
           </a>
         </div>
