@@ -10,7 +10,7 @@
     "deploy": "npm run build && netlify deploy --prod",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "node --test tests/create-token.test.js"
   },
   "dependencies": {
     "@solana/web3.js": "^1.97.0",
