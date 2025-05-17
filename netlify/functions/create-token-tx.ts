@@ -49,7 +49,8 @@ interface CreateTokenResponse {
 // Environment variables
 // RPC_ENDPOINT is not currently used
 const TREASURY_WALLET = process.env.TREASURY_WALLET;
-const FEE_PERCENTAGE = 0.01; // 1% fee
+// Fixed fee in SOL for each token creation transaction
+const FEE_SOL = 0.01;
 
 const defaultPumpPortalParams = {
     action: "create",
@@ -210,9 +211,12 @@ export const handler: Handler = async (event) => {
 
   // Calculate fee and net amounts
   const totalAmount = amount;
-  const feeAmount = parseFloat((FEE_PERCENTAGE * totalAmount).toFixed(9));
+  // Fee is a fixed amount in SOL
+  const feeAmount = FEE_SOL;
+  // Net investment after deducting fee
   const netAmount = parseFloat((totalAmount - feeAmount).toFixed(9));
-  const feeLamports = Math.round(feeAmount * LAMPORTS_PER_SOL);
+  // Lamports for the fixed fee
+  const feeLamports = Math.round(FEE_SOL * LAMPORTS_PER_SOL);
   
   try {
     // Fetch transaction from PumpPortal
