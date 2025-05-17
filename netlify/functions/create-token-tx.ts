@@ -1,5 +1,5 @@
 import { Handler } from '@netlify/functions';
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
+import { PublicKey, SystemProgram, LAMPORTS_PER_SOL, Transaction, VersionedTransaction, TransactionMessage } from '@solana/web3.js';
 import { Buffer, Blob } from 'buffer';
 
 // Endpoint to build and return a Solana transaction for token creation with a fee instruction
@@ -127,38 +127,47 @@ export const handler: Handler = async (event) => {
   let req: CreateTokenRequest;
 
   if (event.httpMethod === 'OPTIONS') {
+    console.log('OPTIONS request');
     return { statusCode: 204, headers };
   }
 
   if (event.httpMethod !== 'POST') {
+    console.log('Method not allowed');
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
   if (!event.body) {
+    console.log('Missing request body');
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing request body' }) };
   }
 
   try {
+    console.log('Parsing request body');
     req = JSON.parse(event.body);
-  } catch {
+  } catch (e) {
+    console.log('Invalid JSON in request body', e);
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON in request body' }) };
   }
 
   const { walletAddress, portalParams, token } = req;
   
   if (!walletAddress || typeof walletAddress !== 'string') {
+    console.log('Missing or invalid walletAddress');
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid walletAddress' }) };
   }
   
   if (!portalParams || typeof portalParams !== 'object') {
+    console.log('Missing or invalid portalParams');
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid portalParams' }) };
   }
   
   if (!token || typeof token !== 'object') {
+    console.log('Missing or invalid token');
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid token' }) };
   }
   
   try {
+    console.log('Creating token metadata');
     tokenMetadata = await createTokenMetadata(token);
   } catch (e) {
     console.error('Error creating token metadata:', e);
@@ -166,10 +175,12 @@ export const handler: Handler = async (event) => {
   }
 
   if (!tokenMetadata || typeof tokenMetadata !== 'object') {
+    console.log('Missing or invalid tokenMetadata');
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid tokenMetadata' }) };
   }
 
   if (['SOL', 'USDC', 'USDT', 'TKNZ'].includes(tokenMetadata.symbol.trim().toUpperCase())) {
+    console.log('Token symbol is reserved and cannot be used.');
     return { statusCode: 400, headers, body: JSON.stringify({ error: `Token symbol ${tokenMetadata.symbol} is reserved and cannot be used.` }) };
   }
 
@@ -178,6 +189,7 @@ export const handler: Handler = async (event) => {
   const { amount } = portalParams;
 
   if (typeof amount !== 'number' || amount <= 0) {
+    console.log('Missing or invalid amount in pumpPortalParams');
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid amount in pumpPortalParams' }) };
   }
 
@@ -190,7 +202,8 @@ export const handler: Handler = async (event) => {
   try {
     userPubkey = new PublicKey(walletAddress);
     treasuryPubkey = new PublicKey(TREASURY_WALLET);
-  } catch {
+  } catch (e) {
+    console.log('Invalid public key(s)', e);
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid public key(s)' }) };
   }
 
@@ -213,40 +226,32 @@ export const handler: Handler = async (event) => {
       return { statusCode: 502, headers, body: JSON.stringify({ error: 'Failed to fetch PumpPortal transaction' }) };
     }
 
-    // Parse response (expecting base64 string)
-    let serializedTxBase64: string;
-    const ct = pumpRes.headers.get('content-type') || '';
-    if (ct.includes('application/json')) {
-      const j = await pumpRes.json();
-      serializedTxBase64 = j.transaction || j.serializedTransaction;
-      if (typeof serializedTxBase64 !== 'string') {
-        console.error('Invalid PumpPortal JSON:', j);
-        return { statusCode: 502, headers, body: JSON.stringify({ error: 'Invalid PumpPortal response format' }) };
-      }
-    } else {
-      serializedTxBase64 = await pumpRes.text();
-    }
-
-    // Deserialize and modify transaction
-    const raw = Buffer.from(serializedTxBase64, 'base64');
-    const tx = Transaction.from(raw);
-    // Prepend fee instruction to ensure treasury fee is applied first
+    const data = await pumpRes.arrayBuffer();
+    const incomingTx = VersionedTransaction.deserialize(new Uint8Array(data));
+    // Create fee transfer instruction
     const feeIx = SystemProgram.transfer({
       fromPubkey: userPubkey,
       toPubkey: treasuryPubkey,
-      lamports: feeLamports
+      lamports: feeLamports,
     });
-    tx.instructions.unshift(feeIx);
-    // Clear signatures for client to sign
-    tx.signatures.forEach(sig => (sig.signature = null));
-
-    // Serialize and return
-    const finalTx = tx.serialize({ requireAllSignatures: false }).toString('base64');
+    // Decompile existing message to TransactionInstruction list
+    const originalMessage = TransactionMessage.decompile(incomingTx.message);
+    const instructions = [feeIx, ...originalMessage.instructions];
+    // Compile a new v0 message with the fee instruction first
+    const newMessage = new TransactionMessage({
+      payerKey: userPubkey,
+      recentBlockhash: incomingTx.message.recentBlockhash,
+      instructions,
+    });
+    const v0Message = newMessage.compileToV0Message();
+    const newTx = new VersionedTransaction(v0Message);
+    // Serialize the versioned transaction (signatures are empty for client signing)
+    const serializedTx = Buffer.from(newTx.serialize()).toString('base64');
     const responseBody: CreateTokenResponse = {
-      transaction: finalTx,
+      transaction: serializedTx,
       feeAmount,
       totalAmount,
-      netAmount
+      netAmount,
     };
 
     return { statusCode: 200, headers, body: JSON.stringify(responseBody) };
