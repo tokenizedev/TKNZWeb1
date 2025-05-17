@@ -169,6 +169,7 @@ export const handler: Handler = async (event) => {
   try {
     console.log('Creating token metadata');
     tokenMetadata = await createTokenMetadata(token);
+    console.log('Token metadata created', tokenMetadata);
   } catch (e) {
     console.error('Error creating token metadata:', e);
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Error creating token metadata' }) };
