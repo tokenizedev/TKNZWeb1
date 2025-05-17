@@ -39,18 +39,22 @@ interface CreateTokenRequest {
 }
 
 interface CreateTokenResponse {
-  transaction: string; // Base64 serialized transaction
-  feeAmount: number;   // Fee in SOL
-  totalAmount: number; // Total investment in SOL
-  netAmount: number;   // Net investment after fee in SOL
+  transaction: string;    // Base64 serialized transaction
+  feeAmount: number;      // Platform fee in SOL (0.01)
+  pumpFeeAmount: number;  // Pump portal fee in SOL (0.02)
+  totalAmount: number;    // Investment amount in SOL
+  netAmount: number;      // Net investment after fees (equal to investment amount)
+  totalCost: number;      // Total cost to user: investment + pump portal fee + platform fee
 }
 
 
 // Environment variables
 // RPC_ENDPOINT is not currently used
 const TREASURY_WALLET = process.env.TREASURY_WALLET;
-// Fixed fee in SOL for each token creation transaction
+// Fixed platform fee in SOL for each token creation transaction
 const FEE_SOL = 0.01;
+// Fixed pump portal fee in SOL charged per transaction
+const PUMP_FEE_SOL = 0.02;
 
 const defaultPumpPortalParams = {
     action: "create",
@@ -209,14 +213,16 @@ export const handler: Handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid public key(s)' }) };
   }
 
-  // Calculate fee and net amounts
-  const totalAmount = amount;
-  // Fee is a fixed amount in SOL
-  const feeAmount = FEE_SOL;
-  // Net investment after deducting fee
-  const netAmount = parseFloat((totalAmount - feeAmount).toFixed(9));
-  // Lamports for the fixed fee
-  const feeLamports = Math.round(FEE_SOL * LAMPORTS_PER_SOL);
+  // Calculate fee, pump fee, investment, and total cost
+  const totalAmount = amount; // User-specified investment amount in SOL
+  const feeAmount = FEE_SOL; // Platform fee in SOL
+  const pumpFeeAmount = PUMP_FEE_SOL; // Pump portal fee in SOL
+  // Net investment amount passed to pump portal
+  const netAmount = totalAmount;
+  // Total cost to user: investment + pump fee + platform fee
+  const totalCost = parseFloat((totalAmount + pumpFeeAmount + feeAmount).toFixed(9));
+  // Lamports for the platform fee transfer
+  const feeLamports = Math.round(feeAmount * LAMPORTS_PER_SOL);
   
   try {
     // Fetch transaction from PumpPortal
@@ -252,11 +258,13 @@ export const handler: Handler = async (event) => {
     const newTx = new VersionedTransaction(v0Message);
     // Serialize the versioned transaction (signatures are empty for client signing)
     const serializedTx = Buffer.from(newTx.serialize()).toString('base64');
-    const responseBody: CreateTokenResponse = {
+    const responseBody: CreateTokenResponse & { pumpFeeAmount: number; totalCost: number } = {
       transaction: serializedTx,
       feeAmount,
+      pumpFeeAmount,
       totalAmount,
       netAmount,
+      totalCost,
     };
 
     return { statusCode: 200, headers, body: JSON.stringify(responseBody) };
