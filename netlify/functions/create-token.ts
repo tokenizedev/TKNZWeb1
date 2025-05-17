@@ -46,7 +46,8 @@ interface CreateTokenResponse {
 }
 
 
-const RPC_ENDPOINT = process.env.RPC_ENDPOINT;
+// Environment variables
+// RPC_ENDPOINT is not currently used
 const TREASURY_WALLET = process.env.TREASURY_WALLET;
 const FEE_PERCENTAGE = 0.01; // 1% fee
 
@@ -180,9 +181,9 @@ export const handler: Handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid amount in pumpPortalParams' }) };
   }
 
-  if (!RPC_ENDPOINT || !TREASURY_WALLET) {
-    console.error('Environment misconfiguration: RPC_ENDPOINT or TREASURY_WALLET not set');
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration' }) };
+  if (!TREASURY_WALLET) {
+    console.error('Environment misconfiguration: TREASURY_WALLET not set');
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: missing TREASURY_WALLET' }) };
   }
 
   let userPubkey: PublicKey, treasuryPubkey: PublicKey;
@@ -229,7 +230,7 @@ export const handler: Handler = async (event) => {
     // Deserialize and modify transaction
     const raw = Buffer.from(serializedTxBase64, 'base64');
     const tx = Transaction.from(raw);
-    // Prepend fee instruction
+    // Prepend fee instruction to ensure treasury fee is applied first
     const feeIx = SystemProgram.transfer({
       fromPubkey: userPubkey,
       toPubkey: treasuryPubkey,
