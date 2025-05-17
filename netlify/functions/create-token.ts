@@ -1,16 +1,41 @@
 import { Handler } from '@netlify/functions';
 import { PublicKey, SystemProgram, LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
-import { Buffer } from 'buffer';
+import { Buffer, Blob } from 'buffer';
 
 // Endpoint to build and return a Solana transaction for token creation with a fee instruction
+
+interface Token {
+    name: string;
+    ticker: string;
+    imageUrl: string;
+    description: string;
+    websiteUrl?: string;
+    twitter?: string;
+    telegram?: string;
+}
+
+interface TokenMetadata {
+  name: string;
+  symbol: string;
+  uri: string;
+}
+
+interface PortalParams {
+  action: string;
+  amount: number;
+  tokenMetadata: TokenMetadata;
+  denominatedInSol: string;
+  slippage: number;
+  publicKey: string;
+  mint: string;
+  priorityFee: number;
+  pool: string;
+}
 
 interface CreateTokenRequest {
   walletAddress: string;
   token: Token;
-  pumpPortalParams: {
-    amount: number;
-    [key: string]: any;
-  };
+  portalParams: Partial<PortalParams>
 }
 
 interface CreateTokenResponse {
@@ -20,21 +45,6 @@ interface CreateTokenResponse {
   netAmount: number;   // Net investment after fee in SOL
 }
 
-interface Token {
-    name: string;
-    ticker: string;
-    description: string;
-    imageUrl: string;
-    websiteUrl: string;
-    twitter: string;
-    telegram: string;
-}
-
-interface TokenMetadata {
-    name: string;
-    symbol: string;
-    uri: string;
-}
 
 const RPC_ENDPOINT = process.env.RPC_ENDPOINT;
 const TREASURY_WALLET = process.env.TREASURY_WALLET;
@@ -48,7 +58,7 @@ const defaultPumpPortalParams = {
     pool: "pump"
 }
 
-async function createTokenMetadata(token: Token) {
+async function createTokenMetadata(token: Token): Promise<TokenMetadata> {
     const { name, ticker, description, imageUrl, websiteUrl, twitter, telegram } = token;
 
     if (!imageUrl) {
@@ -59,16 +69,30 @@ async function createTokenMetadata(token: Token) {
 
     let fileBlob: Blob;
     
-    const imgRes = await fetch(imageUrl);
-    fileBlob = await imgRes.blob();
+    if (imageUrl.startsWith('data:')) {
+      // Handle base64 data URL
+      const [meta, base64Data] = imageUrl.split(',');
+      const contentType = meta.split(':')[1].split(';')[0];
+      const buffer = Buffer.from(base64Data, 'base64');
+      fileBlob = new Blob([buffer], { type: contentType });
+    } else {
+      const imgRes = await fetch(imageUrl);
+      fileBlob = await imgRes.blob();
+    }
 
     formData.append("file", fileBlob);
     formData.append("name", name);
     formData.append("symbol", ticker);
     formData.append("description", description);
-    if (websiteUrl) formData.append("website", websiteUrl);
-    if (twitter) formData.append("twitter", twitter);
-    if (telegram) formData.append("telegram", telegram);
+    if (websiteUrl) {
+        formData.append("website", websiteUrl);
+    }
+    if (twitter) {
+        formData.append("twitter", twitter);
+    }
+    if (telegram) {
+        formData.append("telegram", telegram);
+    }
     formData.append("showName", "true");
 
     const metadataResponse = await fetch("https://pump.fun/api/ipfs", {
@@ -76,7 +100,9 @@ async function createTokenMetadata(token: Token) {
       body: formData,
     });
     
-    if (!metadataResponse.ok) throw new Error(`Failed to upload metadata: ${metadataResponse.statusText}`);
+    if (!metadataResponse.ok) {
+      throw new Error(`Failed to upload metadata: ${metadataResponse.statusText}`);
+    }
     
     const metadataResponseJSON = await metadataResponse.json();
 
@@ -95,6 +121,9 @@ export const handler: Handler = async (event) => {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Content-Type': 'application/json'
   };
+  
+  let tokenMetadata: TokenMetadata;
+  let req: CreateTokenRequest;
 
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers };
@@ -108,35 +137,44 @@ export const handler: Handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing request body' }) };
   }
 
-  let req: CreateTokenRequest;
   try {
     req = JSON.parse(event.body);
   } catch {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON in request body' }) };
   }
 
-  const { walletAddress, pumpPortalParams, token, tokenMetadata } = req;
-  let tokenMeta = tokenMetadata;
-
+  const { walletAddress, portalParams, token } = req;
+  
   if (!walletAddress || typeof walletAddress !== 'string') {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid walletAddress' }) };
   }
   
-  if (!pumpPortalParams || typeof pumpPortalParams !== 'object') {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid pumpPortalParams' }) };
+  if (!portalParams || typeof portalParams !== 'object') {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid portalParams' }) };
   }
   
-  if ((!tokenMeta || typeof tokenMeta !== 'object') && token) {
-    tokenMeta = await createTokenMetadata(token);
+  if (!token || typeof token !== 'object') {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid token' }) };
+  }
+  
+  try {
+    tokenMetadata = await createTokenMetadata(token);
+  } catch (e) {
+    console.error('Error creating token metadata:', e);
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Error creating token metadata' }) };
   }
 
-  if (!tokenMeta || typeof tokenMeta !== 'object') {
+  if (!tokenMetadata || typeof tokenMetadata !== 'object') {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid tokenMetadata' }) };
   }
 
-  Object.assign(pumpPortalParams, { tokenMetadata: tokenMeta });
+  if (['SOL', 'USDC', 'USDT', 'TKNZ'].includes(tokenMetadata.symbol.trim().toUpperCase())) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: `Token symbol ${tokenMetadata.symbol} is reserved and cannot be used.` }) };
+  }
 
-  const { amount } = pumpPortalParams;
+  Object.assign(portalParams, { tokenMetadata });
+
+  const { amount } = portalParams;
 
   if (typeof amount !== 'number' || amount <= 0) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid amount in pumpPortalParams' }) };
@@ -166,7 +204,7 @@ export const handler: Handler = async (event) => {
     const pumpRes = await fetch('https://pumpportal.fun/api/trade-local', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...defaultPumpPortalParams, publicKey: walletAddress, ...pumpPortalParams })
+      body: JSON.stringify({ ...defaultPumpPortalParams, publicKey: walletAddress, ...portalParams })
     });
     if (!pumpRes.ok) {
       const errText = await pumpRes.text();
