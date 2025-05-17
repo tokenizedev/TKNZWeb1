@@ -60,11 +60,18 @@ Launch the development server with hot-reloading:
 ```bash
 npm run dev
 ```
-- Access the app at `http://localhost:5173/`.
-- To test Netlify functions locally:
-  ```bash
-  npm run dev:netlify
-  ```
+  - Access the app at `http://localhost:5173/`.
+  - To test Netlify functions locally:
+    ```bash
+    npm run dev:netlify
+    ```
+
+### Testing
+
+Run the test suite, including TypeScript function handlers, using:
+```bash
+npm test
+```
 
 ### Production Build & Preview
 1. Build for production:
