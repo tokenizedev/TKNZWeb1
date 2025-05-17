@@ -246,33 +246,7 @@ async function buildLeaderboardFromSolana() {
 }
 
 /** Netlify Scheduled Function to update the leaderboard in Upstash Redis */
-export const handler = async (event, _context) => {
-  // Check Authorization header if this is an HTTP request (not a scheduled run)
-  if (event && event.headers) {
-    const authHeader = event.headers.authorization || event.headers.Authorization;
-    if (!authHeader) {
-      return {
-        statusCode: 401,
-        body: JSON.stringify({ error: 'Authorization header is required' })
-      };
-    }
-    
-    // Verify the authorization token
-    // You can use a simple token comparison or more advanced JWT validation
-    const expectedToken = process.env.WEBHOOK_SECRET;
-    if (!expectedToken || authHeader !== `Bearer ${expectedToken}`) {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({ error: 'Invalid authorization token: ' + (expectedToken ? 'E01' : 'E02') })
-      };
-    }
-  } else {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Invalid request' })
-    }
-  }
-  
+export const handler = async (event, _context) => {  
   const redis = new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
