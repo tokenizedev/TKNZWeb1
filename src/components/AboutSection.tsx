@@ -26,7 +26,7 @@ No setup. No coding. Just TKNZ it.
                 <div>
                   <h3 className="text-xl font-semibold text-white mb-2">Tokenize The Internet</h3>
                   <p className="text-gray-300">
-                    Turn tweets, articles, memes—anything you see online—into a token in seconds.
+                    Turn tweets, articles, memes—anything you see online—into a token in seconds. One click, straight to the blockchain
                   </p>
                 </div>
               </div>
@@ -48,9 +48,10 @@ No setup. No coding. Just TKNZ it.
                   <Click className="h-6 w-6 text-green-400" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold text-white mb-2">One-Click Simplicity</h3>
+                  <h3 className="text-xl font-semibold text-white mb-2">Turn X — and the Internet — Into Your DEX</h3>
                   <p className="text-gray-300">
-                    No setup. No friction. Just click and launch. That's it.
+                    The TKNZ extension auto-detects any $ticker or Solana contract on any page and overlays a Buy button.
+One click, routed through Jupiter — no copy/paste, no new tabs, no friction.
                   </p>
                 </div>
               </div>
@@ -74,7 +75,7 @@ No setup. No coding. Just TKNZ it.
                 <div>
                   <h3 className="text-xl font-semibold text-white mb-2">Web3 Wallet Built In</h3>
                   <p className="text-gray-300">
-                    Manage, send, and swap tokens—all from the extension. No extra tabs required. <i>(Launching Soon)</i>
+                    Manage, send, and swap tokens—all from the extension. No extra tabs required. 
                   </p>
                 </div>
               </div>
