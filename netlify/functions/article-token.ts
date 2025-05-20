@@ -16,6 +16,12 @@ interface ArticleTokenRequest {
     level?: number
 }
 
+interface TokenResponse {
+    name: string
+    ticker: string
+    description: string
+}
+
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });

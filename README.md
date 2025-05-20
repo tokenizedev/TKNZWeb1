@@ -15,6 +15,7 @@ Welcome, brave adventurers, to the open-source realm of **TKNZ** – the magical
 - [Technology Stack](#technology-stack)
 - [Configuration](#configuration)
 - [Roadmap](#roadmap)
+- [Code of Conduct](#code-of-conduct)
 - [Contributing](#contributing)
 - [License](#license)
 - [Contact & Community](#contact--community)
@@ -60,11 +61,18 @@ Launch the development server with hot-reloading:
 ```bash
 npm run dev
 ```
-- Access the app at `http://localhost:5173/`.
-- To test Netlify functions locally:
-  ```bash
-  npm run dev:netlify
-  ```
+  - Access the app at `http://localhost:5173/`.
+  - To test Netlify functions locally:
+    ```bash
+    npm run dev:netlify
+    ```
+
+### Testing
+
+Run the test suite, including TypeScript function handlers, using:
+```bash
+npm test
+```
 
 ### Production Build & Preview
 1. Build for production:
@@ -193,6 +201,10 @@ Status: `200 OK`
 - [ ] Enhanced AI “Memier” modes and custom templates
 - [ ] Community-driven plugin system
 - [ ] i18n support for global audiences
+
+## Code of Conduct
+
+Please note that this project is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project, you agree to abide by its guidelines.
 
 ## Contributing
 We welcome all brave souls and creative coders to join our quest!
