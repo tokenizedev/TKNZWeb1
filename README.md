@@ -15,6 +15,7 @@ Welcome, brave adventurers, to the open-source realm of **TKNZ** – the magical
 - [Technology Stack](#technology-stack)
 - [Configuration](#configuration)
 - [Roadmap](#roadmap)
+- [Code of Conduct](#code-of-conduct)
 - [Contributing](#contributing)
 - [License](#license)
 - [Contact & Community](#contact--community)
@@ -200,6 +201,10 @@ Status: `200 OK`
 - [ ] Enhanced AI “Memier” modes and custom templates
 - [ ] Community-driven plugin system
 - [ ] i18n support for global audiences
+
+## Code of Conduct
+
+Please note that this project is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project, you agree to abide by its guidelines.
 
 ## Contributing
 We welcome all brave souls and creative coders to join our quest!
