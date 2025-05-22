@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const config = { schedule: '*/4 * * * *' };
+export const config = { schedule: '*/30 * * * *' };
 
 export default async (_req, _res) => {
   const response = await axios.post('https://tknz.fun/.netlify/functions/update-leaderboard-background', {
