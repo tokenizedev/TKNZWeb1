@@ -2,6 +2,10 @@ const THREAD_ID = 20934; // Forum topic ID for "Token launches"
 const API_URL = 'https://tknz.fun/.netlify/functions/leaderboard?sortBy=launchTime&page=1';
 import { format } from 'date-fns';
 import { Redis } from '@upstash/redis';
+// Firestore & on-chain metadata imports
+import admin from 'firebase-admin';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { deserializeMetadata } from '@metaplex-foundation/mpl-token-metadata';
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -71,11 +75,52 @@ export const handler = async (event, _context) => {
       .replace(/>/g, '&gt;');
   }
 
+  // Initialize Firebase Admin (for createdCoins) and Solana connection (for metadata)
+  if (!admin.apps.length) {
+    if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+      throw new Error('Firebase environment variables are not set');
+    }
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+    });
+  }
+  const db = admin.firestore();
+  if (!process.env.SOLANA_RPC_URL) {
+    throw new Error('SOLANA_RPC_URL is not set');
+  }
+  const connection = new Connection(process.env.SOLANA_RPC_URL);
   try {
-      const response = await fetch(API_URL);
-      const { entries: tokens} = await response.json();
-      console.log('tokens', tokens);
-      const newTokens = [];
+    // Pull created coins directly from Firestore instead of leaderboard API
+    const snapshot = await db.collection('createdCoins').get();
+    const tokens = snapshot.docs.map(doc => {
+      const data = doc.data();
+      const addr = data.address;
+      // Convert Firestore timestamp or string to ms
+      let launchTime = Date.now();
+      const raw = data.createdAt;
+      if (raw && typeof raw.toMillis === 'function') {
+        launchTime = raw.toMillis();
+      } else {
+        const dt = new Date(raw);
+        if (!isNaN(dt.getTime())) launchTime = dt.getTime();
+      }
+      return {
+        address: addr,
+        launchTime,
+        // Firestore fields
+        name: data.name,
+        symbol: data.ticker,
+        // optional: pump URL or other links
+        pumpUrl: data.pumpUrl,
+        walletAddress: data.walletAddress,
+      };
+    });
+    console.log('tokens', tokens);
+    const newTokens = [];
       
       for (const token of tokens) {
         // Check if token has already been sent using Redis
@@ -92,12 +137,61 @@ export const handler = async (event, _context) => {
 
       if (newTokens.length > 0) {
         console.log('newTokens', newTokens);
-        
-        for (const token of newTokens.reverse()) {
-          const name = token.name || "Unknown";
-          const ticker = token.symbol || "???";
-          const launchTime = token.launchTime || "Unknown";
-          const image = token.logoURI || "https://placehold.co/600x400.png?text=TKNZ";
+        // Reverse order so oldest first
+        const tokensToSend = newTokens.slice().reverse();
+        // Batch fetch on-chain metadata PDAs
+        const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+        const pdaInfos = await Promise.all(
+          tokensToSend.map(async token => {
+            const [pda] = await PublicKey.findProgramAddress(
+              [Buffer.from('metadata'), METADATA_PROGRAM_ID.toBuffer(), new PublicKey(token.address).toBuffer()],
+              METADATA_PROGRAM_ID
+            );
+            return { address: token.address, pda };
+          })
+        );
+        const metadataMap = {};
+        const batchSize = 50;
+        for (let i = 0; i < pdaInfos.length; i += batchSize) {
+          const batch = pdaInfos.slice(i, i + batchSize);
+          const infos = await connection.getMultipleAccountsInfo(batch.map(x => x.pda));
+          batch.forEach((item, idx) => {
+            const info = infos[idx];
+            if (info?.data) {
+              try {
+                const md = deserializeMetadata(info);
+                metadataMap[item.address] = {
+                  name: md.name.replace(/\0/g, '').trim(),
+                  symbol: md.symbol.replace(/\0/g, '').trim(),
+                  uri: md.uri.replace(/\0/g, '').trim(),
+                };
+              } catch (e) {
+                metadataMap[item.address] = null;
+              }
+            } else {
+              metadataMap[item.address] = null;
+            }
+          });
+          await sleep(5000);
+        }
+        // Iterate sending tokens with merged metadata
+        for (const token of tokensToSend) {
+          const meta = metadataMap[token.address] || {};
+          const name = meta.name || token.name || 'Unknown';
+          const ticker = meta.symbol || token.symbol || '???';
+          const launchTime = token.launchTime || 'Unknown';
+          let image = token.logoURI || 'https://placehold.co/600x400.png?text=TKNZ';
+          if (meta.uri) {
+            try {
+              const res = await fetch(meta.uri);
+              if (res.ok) {
+                const json = await res.json();
+                image = json.image || json.image_url || image;
+              }
+            } catch (e) {
+              console.warn('Failed to fetch token metadata JSON', e);
+            }
+          }
           const xUrl = token.xUrl;
           const tknzUrl = `https://pump.fun/coin/${token.address}`;
   
