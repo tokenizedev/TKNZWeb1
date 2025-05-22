@@ -8,7 +8,8 @@ import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import { web3JsRpc } from '@metaplex-foundation/umi-rpc-web3js';
 import { publicKey as umiPublicKey } from '@metaplex-foundation/umi';
 import pkg from '@metaplex-foundation/mpl-token-metadata';
-const { mplTokenMetadata, fetchMetadataFromSeeds } = pkg;
+// Destructure necessary functions for metadata handling
+const { mplTokenMetadata, fetchMetadataFromSeeds, deserializeMetadata } = pkg;
 
 const SYSTEM_TOKEN_ADDRESS = 'AfyDiEptGHEDgD69y56XjNSbTs23LaF1YHANVKnWpump';
 const APPROXIMATE_SYSTEM_TOKEN_LAUNCH_TIME = 1746046800000;
@@ -121,110 +122,207 @@ async function buildLeaderboardFromSolana() {
   }
   const addresses = Array.from(uniqueTokensMap.keys());
 
-  // Fetch prices in batches from Jupiter
+  // Fetch prices for tokens via Jupiter Datapi endpoint (batch multi-query)
   const priceMap = {};
-  const batchSize = 10; // Reduced batch size for API rate limits and increased sleep
-  for (let i = 0; i < addresses.length; i += batchSize) {
-    const batch = addresses.slice(i, i + batchSize);
+  const priceBatchSize = 10;
+  for (let i = 0; i < addresses.length; i += priceBatchSize) {
+    const batch = addresses.slice(i, i + priceBatchSize);
+    console.log(`Fetching price data from Datapi for batch: ${batch}`);
     try {
-      console.log(`Fetching prices for ${batch}`);
-      const url = `https://lite-api.jup.ag/price/v2?ids=${batch.join(',')}`;
+      const url = `https://datapi.jup.ag/v1/assets/search?query=${batch.join(',')}&sortBy=verified`;
       const res = await fetch(url);
       if (res.ok) {
-        const json = await res.json();
-        if (json.data) Object.assign(priceMap, json.data);
-        console.log(`Prices for ${batch}: ${JSON.stringify(json.data)}`);
+        const data = await res.json();
+        // API may return an array or { data: [] }
+        const assets = Array.isArray(data) ? data : Array.isArray(data.data) ? data.data : [];
+        // Map each returned asset to its price
+        assets.forEach(asset => {
+          const id = asset.id;
+          const price = Number(asset.usdPrice ?? asset.price ?? asset.priceUsd ?? 0);
+          // Use the Datapi-provided market cap if available
+          const marketCapValue = Number(asset.mcap ?? asset.mcapUsd ?? asset.fdv ?? 0);
+          priceMap[id] = { price, marketCap: marketCapValue };
+        });
+        // Ensure missing tokens get a default price of zero
+        batch.forEach(addr => {
+          if (priceMap[addr] === undefined) {
+            console.warn(`No price/mcap data from Datapi for ${addr}`);
+            priceMap[addr] = { price: 0, marketCap: 0 };
+          }
+        });
+        console.log(`Datapi prices:`, Object.entries(priceMap)
+          .filter(([id]) => batch.includes(id))
+          .map(([id, info]) => ({ id, price: info.price }))
+        );
       } else {
-        console.warn(`Price fetch failed for batch ${i/batchSize}: ${res.status} ${await res.text()}`);
+        console.warn(`Datapi batch fetch failed: ${res.status} ${await res.text()}`);
+        batch.forEach(addr => priceMap[addr] = { price: 0 });
       }
-      await sleep(2000); // Increased sleep between Jupiter calls
     } catch (err) {
-      console.warn(`Price batch fetch failed: ${err}`);
+      console.warn(`Error fetching Datapi batch for ${batch}:`, err);
+      batch.forEach(addr => priceMap[addr] = { price: 0 });
     }
+    // Throttle between batches
+    await sleep(2000);
   }
 
+  // Batch fetch token supplies to reduce RPC calls
+  console.log('Batch fetching token supplies');
+  const supplyMap = {};
+  const supplyBatchSize = 20;
+  for (let i = 0; i < addresses.length; i += supplyBatchSize) {
+    const batch = addresses.slice(i, i + supplyBatchSize);
+    console.log(`Fetching supplies for ${batch.length} tokens`);
+    const requests = batch.map((address, idx) => ({
+      jsonrpc: '2.0',
+      id: idx,
+      method: 'getTokenSupply',
+      params: [address],
+    }));
+    try {
+      const res = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requests),
+      });
+      if (!res.ok) {
+        console.warn(`Batch supply fetch failed: ${res.status}`);
+        batch.forEach(addr => supplyMap[addr] = 0);
+        continue;
+      }
+      const json = await res.json();
+      json.forEach(r => {
+        const idx = r.id;
+        const addr = batch[idx];
+        const uiAmount = r.result?.value?.uiAmount;
+        const val = Number(uiAmount ?? 0);
+        supplyMap[addr] = val;
+        console.log(`Supply for ${addr}: ${val}`);
+      });
+    } catch (err) {
+      console.warn(`Batch supply fetch error: ${err}`);
+      batch.forEach(addr => supplyMap[addr] = 0);
+    }
+    await sleep(10_000); // throttle between batch RPC calls
+  }
+
+  // Batch fetch metadata for all tokens
+  console.log('Batch fetching metadata for tokens');
+  const metadataBatchSize = 50;
+  const metadataMap = {};
+  const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+  for (let i = 0; i < addresses.length; i += metadataBatchSize) {
+    const batch = addresses.slice(i, i + metadataBatchSize);
+    const pdas = await Promise.all(batch.map(addr =>
+      PublicKey.findProgramAddress(
+        [Buffer.from('metadata'), METADATA_PROGRAM_ID.toBuffer(), new PublicKey(addr).toBuffer()],
+        METADATA_PROGRAM_ID
+      ).then(([pda]) => pda)
+    ));
+    const infos = await connection.getMultipleAccountsInfo(pdas);
+    infos.forEach((info, idx) => {
+      const addr = batch[idx];
+      if (info?.data) {
+        try {
+          // Decode metadata using generated deserializer
+          const md = deserializeMetadata(info);
+          metadataMap[addr] = {
+            name: md.name.replace(/\0/g, '').trim(),
+            symbol: md.symbol.replace(/\0/g, '').trim(),
+            uri: md.uri.replace(/\0/g, '').trim(),
+            creators: md.creators,
+          };
+        } catch (e) {
+          console.warn(`Failed to decode metadata for ${addr}`, e);
+          metadataMap[addr] = null;
+        }
+      } else {
+        console.warn(`Metadata account not found for ${addr}`);
+        metadataMap[addr] = null;
+      }
+    });
+    await sleep(5000);
+  }
+
+  // Bulk fetch missing launch timestamps via RPC batching
+  const missingLaunchAddrs = addresses.filter(addr => !launchTimestamps.has(addr));
+  const launchBatchSize = 20;
+  for (let i = 0; i < missingLaunchAddrs.length; i += launchBatchSize) {
+    const batchAddrs = missingLaunchAddrs.slice(i, i + launchBatchSize);
+    const requests = batchAddrs.map((addr, idx) => ({
+      jsonrpc: '2.0',
+      id: idx,
+      method: 'getSignaturesForAddress',
+      params: [addr, { limit: 1 }],
+    }));
+    console.log(`Batch fetching launch timestamps for tokens: ${batchAddrs}`);
+    try {
+      const res = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requests),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        json.forEach(rpcRes => {
+          const idxLocal = rpcRes.id;
+          const addrLocal = batchAddrs[idxLocal];
+          const sigs = rpcRes.result || [];
+          if (Array.isArray(sigs) && sigs.length > 0 && sigs[0].blockTime) {
+            const tsMs = sigs[0].blockTime * 1000;
+            launchTimestamps.set(addrLocal, tsMs);
+            console.log(`Launch time for ${addrLocal}: ${new Date(tsMs).toISOString()}`);
+          } else {
+            launchTimestamps.set(addrLocal, Date.now());
+          }
+        });
+      } else {
+        console.warn(`Batch launch timestamp fetch failed: ${res.status} ${await res.text()}`);
+        batchAddrs.forEach(addrLocal => launchTimestamps.set(addrLocal, Date.now()));
+      }
+    } catch (err) {
+      console.warn(`Error fetching launch timestamps batch: ${err}`);
+      batchAddrs.forEach(addrLocal => launchTimestamps.set(addrLocal, Date.now()));
+    }
+    await sleep(5000);
+  }
 
   const results = [];
   for (const address of addresses) {
     const priceInfo = priceMap[address];
     const price = Number(priceInfo?.price ?? 0);
-    let supply = 0;
+    const supply = supplyMap[address] ?? 0;
     let fetchedName = null;
     let fetchedSymbol = null;
     let fetchedLogo = 'https://images.pexels.com/photos/844124/pexels-photo-844124.jpeg?auto=compress&cs=tinysrgb&w=200';
     let fetchedCreator = uniqueTokensMap.get(address) || 'UNKNOWN'; // Get initial creator from Firestore event
     let launchTime = null;
 
-    try {
-      console.log(`Fetching supply for ${address}`);
-      const pubkey = new PublicKey(address);
-      const supplyInfo = await connection.getTokenSupply(pubkey);
-      supply = Number(supplyInfo.value.uiAmount ?? 0); // Assuming 1B supply from reference if not available
-      console.log(`Supply for ${address}: ${supply}`);
-    } catch (err) {
-      console.warn(`Failed to fetch supply for ${address}: ${err}. Assuming 0.`);
-      // If supply fetch fails, market cap will be 0. This is a safe fallback.
-    }
-    await sleep(500); // Sleep between individual token supply/metadata calls
-
-    if (umi) {
+    // Apply batched metadata
+    const meta = metadataMap[address];
+    if (meta) {
+      fetchedName = meta.name;
+      fetchedSymbol = meta.symbol;
+      const fetchedUri = meta.uri;
       try {
-        console.log(`Fetching Umi metadata for ${address}`);
-        const mint = umiPublicKey(address);
-        const metadataAccount = await fetchMetadataFromSeeds(umi, { mint });
-
-        fetchedName = metadataAccount.name?.replace(/\\0/g, '').trim() || null;
-        fetchedSymbol = metadataAccount.symbol?.replace(/\\0/g, '').trim() || null;
-        const fetchedUri = metadataAccount.uri?.replace(/\\0/g, '').trim();
-
-        if (metadataAccount.creators && metadataAccount.creators.__option === 'Some') {
-          const creators = metadataAccount.creators.value;
-          const verifiedCreator = creators.find(c => c.verified);
-          if (verifiedCreator) {
-            fetchedCreator = verifiedCreator.address.toString();
-          } else if (creators.length > 0) {
-            fetchedCreator = creators[0].address.toString(); // Fallback to first creator if no verified one
-          }
-        }
-
-        if (fetchedUri) {
-          try {
-            const response = await fetch(fetchedUri);
-            if (response.ok) {
-              const json = await response.json();
-              fetchedLogo = json.image || json.image_url || '/default-token.svg';
-            } else {
-              console.warn(`Failed to fetch URI JSON for ${address}: ${response.status}`);
-            }
-          } catch (uriError) {
-            console.warn(`Error fetching or parsing URI JSON for ${address}`, uriError);
-          }
-        }
-        console.log(`Umi metadata for ${address}: Name=${fetchedName}, Symbol=${fetchedSymbol}, Creator=${fetchedCreator}, Logo=${fetchedLogo}`);
-      } catch (err) {
-        console.warn(`Umi metadata fetch failed for ${address}: ${err.message}. Name/Symbol might be missing.`);
-      }
-      await sleep(500); // Sleep after Umi call
-    }
-    
-    // Fetch launch time
-    try {
-        console.log(`Fetching launch time for ${address}`);
-        if (launchTimestamps.has(address)) {
-            console.log(`Launch time found for ${address}: ${launchTimestamps.get(address)}`);
-            launchTime = launchTimestamps.get(address);
+        const response = await fetch(fetchedUri);
+        if (response.ok) {
+          const json = await response.json();
+          fetchedLogo = json.image || json.image_url || '/default-token.svg';
         } else {
-            console.log(`Launch time not found for ${address}, fetching from Solana`);
-            launchTime = await fetchTokenMintTimestamp(connection, address);
+          console.warn(`Failed to fetch URI JSON for ${address}: ${response.status}`);
         }
-    } catch (err) {
-        console.warn(`Failed to fetch launch time for ${address}: ${err}`);
-        launchTime = Date.now(); // Fallback
+      } catch (e) {
+        console.warn(`Error fetching URI JSON for ${address}`, e);
+      }
     }
-    await sleep(500); // Sleep after launch time call
+
+    // Determine launch time from pre-fetched timestamps
+    launchTime = launchTimestamps.get(address) ?? Date.now();
 
 
-    const marketCap = price * supply;
+    // Use Datapi-provided marketCap, fallback to price * supply
+    const marketCap = Number(priceInfo?.marketCap ?? price * supply);
     const tokenDetails = {
       address,
       name: fetchedName || address.slice(0, 6), // Fallback name
@@ -247,10 +345,11 @@ async function buildLeaderboardFromSolana() {
 
 /** Netlify Scheduled Function to update the leaderboard in Upstash Redis */
 export const handler = async (event, _context) => {  
-  const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
+  // Determine dry-run mode: skip Redis writes if enabled
+  const dryRun = event.dryRun === true || event.dryRun === 'true' || process.env.DRY_RUN === 'true';
+  if (dryRun) {
+    console.log('Dry run mode enabled: will not write to Redis.');
+  }
 
   try {
     const tokenDataArray = await buildLeaderboardFromSolana();
@@ -258,7 +357,16 @@ export const handler = async (event, _context) => {
       console.log('No token data to update.');
       return { statusCode: 200, body: 'No token data to update.' };
     }
-    
+    // If dry-run, output the data and exit without writing to Redis
+    if (dryRun) {
+      console.log('Dry run result, token data array:', tokenDataArray);
+      return { statusCode: 200, body: JSON.stringify({ dryRun: true, tokens: tokenDataArray }) };
+    }
+    // Initialize Redis client for real execution
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
     const pipeline = redis.multi();
     
     // Atomically update token details and leaderboard scores
@@ -303,6 +411,7 @@ export const handler = async (event, _context) => {
       } else {
         console.warn(`Skipping ZADD for leaderboard:launchTime for ${address} due to invalid launchTime: ${launchTime}`);
       }
+      await sleep(5000);
     }
     
     const results = await pipeline.exec();
