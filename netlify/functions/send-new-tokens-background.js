@@ -11,6 +11,29 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Exponential backoff utility for RPC calls
+async function withExponentialBackoff(fn, maxRetries = 3, initialDelay = 5000) {
+  let delay = initialDelay;
+  let lastError;
+  
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      console.warn(`RPC call failed (attempt ${i + 1}/${maxRetries + 1}):`, error.message);
+      
+      if (i < maxRetries) {
+        console.log(`Retrying in ${delay}ms...`);
+        await sleep(delay);
+        delay *= 2; // Exponential backoff
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 export const ping = async (event, context) => {
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -154,7 +177,10 @@ export const handler = async (event, _context) => {
         const batchSize = 50;
         for (let i = 0; i < pdaInfos.length; i += batchSize) {
           const batch = pdaInfos.slice(i, i + batchSize);
-          const infos = await connection.getMultipleAccountsInfo(batch.map(x => x.pda));
+          const infos = await withExponentialBackoff(async () => {
+            return await connection.getMultipleAccountsInfo(batch.map(x => x.pda));
+          });
+          
           batch.forEach((item, idx) => {
             const info = infos[idx];
             if (info?.data) {
@@ -172,7 +198,11 @@ export const handler = async (event, _context) => {
               metadataMap[item.address] = null;
             }
           });
-          await sleep(5000);
+          
+          // Add delay between batches to avoid rate limiting
+          if (i + batchSize < pdaInfos.length) {
+            await sleep(5000);
+          }
         }
         // Iterate sending tokens with merged metadata
         for (const token of tokensToSend) {
@@ -183,11 +213,15 @@ export const handler = async (event, _context) => {
           let image = token.logoURI || 'https://placehold.co/600x400.png?text=TKNZ';
           if (meta.uri) {
             try {
-              const res = await fetch(meta.uri);
-              if (res.ok) {
-                const json = await res.json();
-                image = json.image || json.image_url || image;
-              }
+              const { image: fetchedImage, image_url: fetchedImageUrl } = await withExponentialBackoff(async () => {
+                const res = await fetch(meta.uri);
+                if (!res.ok) {
+                  throw new Error(`Failed to fetch metadata: ${res.status} ${res.statusText}`);
+                }
+                return await res.json();
+              }, 2, 2000); // 2 retries, starting at 2 seconds for metadata fetches
+              
+              image = fetchedImage || fetchedImageUrl || image;
             } catch (e) {
               console.warn('Failed to fetch token metadata JSON', e);
             }
