@@ -11,6 +11,7 @@ import {
 import { Buffer, Blob } from 'buffer';
 import { CpAmm } from '@meteora-ag/cp-amm-sdk';
 import BN from 'bn.js';
+import { parseTokenAmount } from '../../src/amm';
 import { NATIVE_MINT } from '@solana/spl-token';
 
 // Helper to upload token metadata (name, symbol, description, image, etc.) to IPFS via Pump Portal
@@ -167,9 +168,9 @@ export const handler: Handler = async (event) => {
     // Compute rent exemption for mint
     const rentLamports = await connection.getMinimumBalanceForRentExemption(MINT_SIZE);
     
-    // Calculate raw initial supply in smallest units (UI to raw)
+    // Calculate raw initial supply in smallest units (UI to raw) via helper
     // rawSupply = initialSupply * (10^decimals)
-    const initialSupplyRaw = new BN(initialSupply).mul(new BN(10).pow(new BN(decimals)));
+    const initialSupplyRaw = await parseTokenAmount(connection, mintPubkey, initialSupply);
     
     // Build instructions for token minting and pool creation
     const instructions = [];
