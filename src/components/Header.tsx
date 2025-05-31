@@ -22,7 +22,6 @@ const Header: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Add effect to handle body scroll
   useEffect(() => {
     if (isMenuOpen) {
       document.body.style.overflow = 'hidden';
@@ -51,18 +50,17 @@ const Header: React.FC = () => {
 
   return (
     <header 
-      className={`fixed w-full z-40 transition-all duration-300 mt-12 ${
+      className={`fixed w-full z-[100] transition-all duration-300 mt-12 ${
         isScrolled ? 'bg-black/90 backdrop-blur-md py-3' : 'bg-transparent py-5'
       }`}
     >
-      <nav className="container mx-auto px-4 flex justify-between items-center">
-        <div className="flex items-center group">
-          <a href="/" className="block">
+      <nav className="container mx-auto px-4 flex justify-between items-center relative">
+        <div className={`flex items-center group ${isMenuOpen ? 'z-[101]' : ''}`}>
+          <a href="/" className="block relative">
             <img 
               src="/assets/logo.png" 
               alt="TKNZ.FUN" 
               className="h-16 w-auto mr-2 transition-transform group-hover:scale-110"
-              style={{ borderRadius: '50%', objectFit: 'cover', overflow: 'hidden' }}
             />
           </a>
         </div>
@@ -78,7 +76,7 @@ const Header: React.FC = () => {
               Socials <ChevronDown className="ml-1 h-4 w-4" />
             </button>
             {activeDropdown === 'socials' && (
-              <div className="absolute top-full mt-2 w-48 bg-black/95 backdrop-blur-md border border-green-500/30 rounded-md overflow-hidden">
+              <div className="absolute top-full mt-2 w-48 bg-black/95 backdrop-blur-md border border-green-500/30 rounded-md overflow-hidden z-[102]">
                 <a 
                   href="https://x.com/tknzfun" 
                   target="_blank" 
@@ -116,7 +114,7 @@ const Header: React.FC = () => {
               Token Info <ChevronDown className="ml-1 h-4 w-4" />
             </button>
             {activeDropdown === 'token' && (
-              <div className="absolute top-full right-0 mt-2 w-[420px] bg-black/95 backdrop-blur-md border border-green-500/30 rounded-md overflow-hidden">
+              <div className="absolute top-full right-0 mt-2 w-[420px] bg-black/95 backdrop-blur-md border border-green-500/30 rounded-md overflow-hidden z-[102]">
                 <div className="px-4 py-3 border-b border-green-500/30">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-gray-400 text-sm">Contract Address:</p>
@@ -178,7 +176,7 @@ const Header: React.FC = () => {
 
         {/* Mobile Menu Button */}
         <button
-          className="md:hidden text-white relative z-50"
+          className="md:hidden text-white relative z-[101]"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
           {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -187,8 +185,8 @@ const Header: React.FC = () => {
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="md:hidden fixed inset-0 bg-black/95 backdrop-blur-md z-40 pt-24">
-          <div className="container mx-auto px-4 py-4 flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-6rem)]">
+        <div className="md:hidden fixed inset-0 bg-black/95 backdrop-blur-md z-[99]">
+          <div className="container mx-auto px-4 pt-32 pb-8 flex flex-col space-y-6 overflow-y-auto h-screen">
             <div className="border-b border-green-500/30 pb-4">
               <h3 className="text-green-400 mb-2 font-mono">Socials</h3>
               <div className="flex flex-col space-y-2">
