@@ -109,7 +109,7 @@ const VisionSection: React.FC = () => {
                 }`}
               >
                 <p className="text-2xl text-gray-300 leading-relaxed">
-                  From instant token deployment on <span className="text-green-400">Pump.fun</span> to buying any ticker or contract straight from Twitter, TKNZ brings the power of Solana to your fingertips.
+                  From instant token deployment to buying any ticker or contract straight from Twitter, TKNZ brings the power of Solana to your fingertips.
                 </p>
               </div>
               
