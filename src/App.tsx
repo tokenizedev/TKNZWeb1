@@ -5,6 +5,7 @@ import AboutSection from './components/AboutSection';
 import LiveTicker from './components/LiveTicker';
 import VisionSection from './components/VisionSection';
 import BuildingWithSection from './components/BuildingWithSection';
+import RoadmapSection from './components/RoadmapSection';
 import Footer from './components/Footer';
 
 function App() {
@@ -29,6 +30,7 @@ function App() {
         <HeroSection />
         <AboutSection />
         <VisionSection />
+        <RoadmapSection />
         <BuildingWithSection />
       </main>
       <Footer />
