@@ -18,7 +18,8 @@ export async function getOrCreatePoolFeeConfig(
   console.log('Looking up existing pool fee configs on-chain...');
   const configs = await cpAmm.getAllConfigs();
   if (configs && configs.length > 0) {
-    const existingPubkey = configs[0].pubkey;
+    // cpAmm.getAllConfigs() returns objects with 'publicKey' and 'account'
+    const existingPubkey = configs[0].publicKey;
     console.log('Found existing fee config:', existingPubkey.toBase58());
     return existingPubkey;
   }
