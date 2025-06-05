@@ -9,7 +9,7 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { Buffer, Blob } from 'buffer';
-import { CpAmm } from '@meteora-ag/cp-amm-sdk';
+import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
 import BN from 'bn.js';
 import { parseTokenAmount } from '../../src/amm';
 import { NATIVE_MINT } from '@solana/spl-token';
@@ -222,12 +222,17 @@ export const handler: Handler = async (event) => {
     const cpAmm = new CpAmm(connection);
     const tokenAAmountBN = initialSupplyRaw;
     const tokenBAmountBN = new BN(0);
+    // Prepare pool creation params
     const { initSqrtPrice, liquidityDelta } = cpAmm.preparePoolCreationParams({
       tokenAAmount: tokenAAmountBN,
       tokenBAmount: tokenBAmountBN,
       minSqrtPrice: new BN(0),
       maxSqrtPrice: new BN('340282366920938463463374607431768211455'),
     });
+    // Derive pool address
+    const poolAddress = derivePoolAddress(configPubkey, mintPubkey, NATIVE_MINT);
+    console.log('Derived pool address:', poolAddress.toBase58());
+    // Build pool creation transaction
     const poolTx = await cpAmm.createPool({
       payer: userPubkey,
       creator: userPubkey,
@@ -244,6 +249,7 @@ export const handler: Handler = async (event) => {
       tokenBProgram: TOKEN_PROGRAM_ID,
       isLockLiquidity,
     });
+    // Append pool creation instructions
     instructions.push(...poolTx.instructions);
     
     // Compile versioned transaction
@@ -267,6 +273,7 @@ export const handler: Handler = async (event) => {
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
+        pool: poolAddress.toBase58(),
         decimals,
         initialSupply,
         initialSupplyRaw: initialSupplyRaw.toString(),
