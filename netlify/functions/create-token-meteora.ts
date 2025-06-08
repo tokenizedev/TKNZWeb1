@@ -254,8 +254,8 @@ export const handler: Handler = async (event) => {
           data: ix.data,
         });
       });
-      // [TEMP] Skipping metadata creation instructions to avoid runtime panic.
-      // instructionsPool.push(...web3Ixs);
+      // Add metadata creation instructions into the pool transaction (tx2)
+      instructionsPool.push(...web3Ixs);
     }
     // 1) Create mint account
     instructionsMint.push(
