@@ -1,5 +1,5 @@
 import { Handler } from '@netlify/functions';
-import { Connection, Keypair, PublicKey, SystemProgram, VersionedTransaction, TransactionMessage } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, VersionedTransaction, TransactionMessage, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
   MINT_SIZE,
@@ -10,8 +10,15 @@ import {
 } from '@solana/spl-token';
 import { Buffer, Blob } from 'buffer';
 import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
+// Metaplex Token Metadata
+import { createUmi } from '@metaplex-foundation/umi';
+// Removed unused web3JsRpc import; RPC is now configured via defaultPlugins
+import { defaultPlugins } from '@metaplex-foundation/umi-bundle-defaults';
+import { mplTokenMetadata, createMetadataAccountV3, DataV2 } from '@metaplex-foundation/mpl-token-metadata';
 import BN from 'bn.js';
-import { parseTokenAmount } from '../../src/amm';
+import dotenv from 'dotenv';
+dotenv.config();
+//import { parseTokenAmount } from '../../src/amm';
 import { NATIVE_MINT } from '@solana/spl-token';
 
 // Helper to upload token metadata (name, symbol, description, image, etc.) to IPFS via Pump Portal
@@ -73,10 +80,31 @@ interface CreateMeteoraTokenRequest {
   };
   decimals?: number;        // optional, default to 9
   initialSupply?: number;   // optional, default to 0
+  portalParams?: {
+    amount: number;         // SOL to deposit into pool
+    priorityFee?: number;   // SOL fee to collect
+    slippage?: number;
+    mint?: string;
+    pool?: string;
+  };
 }
 
-// Response for stub implementation
+// Response type for create-token-meteora
 interface CreateMeteoraTokenResponse {
+  transaction1: string;
+  transaction2: string;
+  mint: string;
+  ata: string;
+  metadataUri: string;
+  pool: string;
+  decimals: number;
+  initialSupply: number;
+  initialSupplyRaw: string;
+  depositSol: number;
+  depositLamports: number;
+  feeSol: number;
+  feeLamports: number;
+  isLockLiquidity: boolean;
   error?: string;
 }
 
@@ -103,7 +131,7 @@ export const handler: Handler = async (event) => {
   } catch (e) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON in request body' }) };
   }
-  const { walletAddress, token, decimals = 9, initialSupply = 0, isLockLiquidity = false } = req;
+  const { walletAddress, token, decimals = 9, initialSupply = 0, isLockLiquidity = false, portalParams } = req;
   // Validate inputs
   if (!walletAddress || typeof walletAddress !== 'string') {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid walletAddress' }) };
@@ -127,7 +155,7 @@ export const handler: Handler = async (event) => {
     console.log('Token metadata URI:', tokenMetadata.uri);
     
     // Prepare Solana connection and keys
-    const RPC_ENDPOINT = process.env.RPC_ENDPOINT;
+    const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=5e4edb76-36ed-4740-942d-7843adcc1e22';
     if (!RPC_ENDPOINT) {
       console.error('Missing RPC_ENDPOINT');
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: RPC_ENDPOINT' }) };
@@ -168,14 +196,69 @@ export const handler: Handler = async (event) => {
     // Compute rent exemption for mint
     const rentLamports = await connection.getMinimumBalanceForRentExemption(MINT_SIZE);
     
-    // Calculate raw initial supply in smallest units (UI to raw) via helper
-    // rawSupply = initialSupply * (10^decimals)
-    const initialSupplyRaw = await parseTokenAmount(connection, mintPubkey, initialSupply);
-    
-    // Build instructions for token minting and pool creation
-    const instructions = [];
+    // Calculate raw initial supply in smallest units: amountUi * 10^decimals
+    const multiplier = new BN(10).pow(new BN(decimals));
+    const initialSupplyRaw = new BN(initialSupply).mul(multiplier);
+    console.log('RPC_ENDPOINT', RPC_ENDPOINT);
+    // Build separate instruction sets: mint+metadata and pool+deposit
+    const instructionsMint: TransactionInstruction[] = [];
+    const instructionsPool: TransactionInstruction[] = [];
+    // 0) Create on-chain metadata account for the new mint (metadata instructions for second TX)
+    {
+      // Initialize Umi context for metadata instruction using RPC endpoint
+      // Plugins must be loaded in correct order: defaults, RPC, metadata
+      // Initialize Umi context with default plugins and Token Metadata plugin
+      // Pass the existing Solana connection to defaultPlugins for RPC setup
+      const umi = createUmi()
+        .use(defaultPlugins(connection))
+        .use(mplTokenMetadata());
+      // Prepare metadata data
+      const metadataData: DataV2 = {
+        name: token.name.substring(0, 32),
+        symbol: token.ticker.substring(0, 10),
+        uri: tokenMetadata.uri,
+        sellerFeeBasisPoints: 0,
+        creators: null,
+        collection: null,
+        uses: null,
+      };
+      // Build metadata account instruction via UMI and convert to web3.js instructions
+      const metadataBuilder = createMetadataAccountV3(umi, {
+        mint: mintPubkey,
+        mintAuthority: userPubkey,
+        payer: userPubkey,
+        updateAuthority: userPubkey,
+        data: metadataData,
+        isMutable: true,
+        // Explicitly set collectionDetails to null (Option.none)
+        collectionDetails: null,
+      });
+      // Convert UMI instructions to Solana Web3.js TransactionInstruction
+      const umiIxs = metadataBuilder.getInstructions();
+      const web3Ixs = umiIxs.map((ix) => {
+        // Normalize pubkey to string if it's a PDA tuple
+        const keys = ix.keys.map(({ pubkey, isSigner, isWritable }) => {
+          const addr = Array.isArray(pubkey) ? pubkey[0] : pubkey;
+          return {
+            pubkey: typeof addr === 'string' ? new PublicKey(addr) : addr,
+            isSigner,
+            isWritable,
+          };
+        });
+        // programId may also be PDA tuple or string
+        const pidAddr = Array.isArray(ix.programId) ? ix.programId[0] : ix.programId;
+        const programIdKey = typeof pidAddr === 'string' ? new PublicKey(pidAddr) : pidAddr;
+        return new TransactionInstruction({
+          keys,
+          programId: programIdKey,
+          data: ix.data,
+        });
+      });
+      // [TEMP] Skipping metadata creation instructions to avoid runtime panic.
+      // instructionsPool.push(...web3Ixs);
+    }
     // 1) Create mint account
-    instructions.push(
+    instructionsMint.push(
       SystemProgram.createAccount({
         fromPubkey: userPubkey,
         newAccountPubkey: mintPubkey,
@@ -184,8 +267,8 @@ export const handler: Handler = async (event) => {
         programId: TOKEN_PROGRAM_ID,
       })
     );
-    // 2) Initialize mint (decimals, mintAuthority = user)
-    instructions.push(
+    // 2) Initialize mint (decimals, mintAuthority = user) 
+    instructionsMint.push(
       createInitializeMintInstruction(
         mintPubkey,
         decimals,
@@ -195,7 +278,7 @@ export const handler: Handler = async (event) => {
       )
     );
     // 3) Create user's associated token account (idempotent)
-    instructions.push(
+    instructionsMint.push(
       createAssociatedTokenAccountIdempotentInstruction(
         userPubkey,
         ata,
@@ -206,7 +289,7 @@ export const handler: Handler = async (event) => {
     );
     // 4) Mint initial supply to user's ATA if > 0
     if (initialSupply > 0) {
-      instructions.push(
+      instructionsMint.push(
         createMintToInstruction(
           mintPubkey,
           ata,
@@ -218,17 +301,56 @@ export const handler: Handler = async (event) => {
       );
     }
     
-    // 5) Initialize pool via CP-AMM
+    // 5) Deposit fee (if any) and prepare pool via CP-AMM (pool instructions)
     const cpAmm = new CpAmm(connection);
+    // Determine deposit and optional extra fee in SOL
+    const solDepositUi = portalParams?.amount ?? 0.01;
+    const feeUi = portalParams?.priorityFee ?? 0;  // no extra fee by default when AMM config handles fees
+    const depositLamports = Math.round(solDepositUi * LAMPORTS_PER_SOL);
+    const feeLamports = Math.round(feeUi * LAMPORTS_PER_SOL);
+    // Collect fee if specified
+    if (feeLamports > 0) {
+      const feeAccount = process.env.TREASURY_ACCOUNT;
+      if (!feeAccount) {
+        throw new Error('Missing TREASURY_ACCOUNT env var for fee collection');
+      }
+      const feePubkey = new PublicKey(feeAccount);
+      instructionsPool.push(
+        SystemProgram.transfer({
+          fromPubkey: userPubkey,
+          toPubkey: feePubkey,
+          lamports: feeLamports,
+        })
+      );
+    }
+    // Set token amounts for pool initialization
     const tokenAAmountBN = initialSupplyRaw;
-    const tokenBAmountBN = new BN(0);
-    // Prepare pool creation params
-    const { initSqrtPrice, liquidityDelta } = cpAmm.preparePoolCreationParams({
-      tokenAAmount: tokenAAmountBN,
-      tokenBAmount: tokenBAmountBN,
-      minSqrtPrice: new BN(0),
-      maxSqrtPrice: new BN('340282366920938463463374607431768211455'),
-    });
+    const tokenBAmountBN = new BN(depositLamports);
+    // Define price bounds
+    const minSqrtPrice = new BN(0);
+    const maxSqrtPrice = new BN('340282366920938463463374607431768211455');
+    let initSqrtPrice: BN;
+    let liquidityDelta: BN;
+    if (tokenAAmountBN.gt(new BN(0)) && tokenBAmountBN.eq(new BN(0))) {
+      // Single-sided pool creation: init price == min price
+      initSqrtPrice = minSqrtPrice;
+      liquidityDelta = cpAmm.preparePoolCreationSingleSide({
+        tokenAAmount: tokenAAmountBN,
+        initSqrtPrice,
+        minSqrtPrice,
+        maxSqrtPrice,
+      });
+    } else {
+      // Two-sided pool creation, with SOL deposit
+      const poolPrep = cpAmm.preparePoolCreationParams({
+        tokenAAmount: tokenAAmountBN,
+        tokenBAmount: tokenBAmountBN,
+        minSqrtPrice,
+        maxSqrtPrice,
+      });
+      initSqrtPrice = poolPrep.initSqrtPrice;
+      liquidityDelta = poolPrep.liquidityDelta;
+    }
     // Derive pool address
     const poolAddress = derivePoolAddress(configPubkey, mintPubkey, NATIVE_MINT);
     console.log('Derived pool address:', poolAddress.toBase58());
@@ -250,26 +372,37 @@ export const handler: Handler = async (event) => {
       isLockLiquidity,
     });
     // Append pool creation instructions
-    instructions.push(...poolTx.instructions);
+    instructionsPool.push(...poolTx.instructions);
     
-    // Compile versioned transaction
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    const message = new TransactionMessage({
+    // Compile first transaction: mint creation & metadata
+    const { blockhash: blockhash1 } = await connection.getLatestBlockhash();
+    const message1 = new TransactionMessage({
       payerKey: userPubkey,
-      recentBlockhash: blockhash,
-      instructions,
+      recentBlockhash: blockhash1,
+      instructions: instructionsMint,
     }).compileToV0Message();
-    const tx = new VersionedTransaction(message);
-    // Partially sign for mint and position NFT
-    tx.sign([mintKeypair, positionNftKeypair]);
-    
-    // Serialize to base64 and respond
-    const serialized = Buffer.from(tx.serialize()).toString('base64');
+    const tx1 = new VersionedTransaction(message1);
+    // Partially sign tx1 with mint keypair
+    tx1.sign([mintKeypair]);
+    const serialized1 = Buffer.from(tx1.serialize()).toString('base64');
+
+    // Compile second transaction: pool creation & deposit
+    const { blockhash: blockhash2 } = await connection.getLatestBlockhash();
+    const message2 = new TransactionMessage({
+      payerKey: userPubkey,
+      recentBlockhash: blockhash2,
+      instructions: instructionsPool,
+    }).compileToV0Message();
+    const tx2 = new VersionedTransaction(message2);
+    // Partially sign tx2 with position NFT keypair
+    tx2.sign([positionNftKeypair]);
+    const serialized2 = Buffer.from(tx2.serialize()).toString('base64');
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        transaction: serialized,
+        transaction1: serialized1,
+        transaction2: serialized2,
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
@@ -277,10 +410,23 @@ export const handler: Handler = async (event) => {
         decimals,
         initialSupply,
         initialSupplyRaw: initialSupplyRaw.toString(),
+        depositSol: solDepositUi,
+        depositLamports: depositLamports,
+        feeSol: feeUi,
+        feeLamports: feeLamports,
         isLockLiquidity,
       }),
     };
   } catch (err: any) {
     console.error('Unexpected error in create-token-meteora:', err);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message || 'Internal server error' }) };
-  };
+    // Provide detailed error message and stack in response for debugging
+    const errorMessage = err instanceof Error
+      ? (err.stack || err.message)
+      : JSON.stringify(err, null, 2);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: errorMessage }),
+    };
+  }
+};
