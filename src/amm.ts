@@ -87,11 +87,18 @@ export async function parseTokenAmount(
   amountUi: number
 ): Promise<BN> {
   try {
+    console.log('Parsing token amount for mint:', mint.toBase58(), 'with amount:', amountUi);
     const mintInfo = await getMint(connection, mint);
+    console.log('Mint info:', mintInfo);
+
     const decimals = mintInfo.decimals;
+    console.log('Decimals:', decimals);
     // UI amount * 10^decimals = raw amount
     const multiplier = new BN(10).pow(new BN(decimals));
-    return new BN(amountUi).mul(multiplier);
+    console.log('Multiplier:', multiplier.toString());
+    const rawAmount = new BN(amountUi).mul(multiplier);
+    console.log('Raw amount:', rawAmount.toString());
+    return rawAmount;
   } catch (err: any) {
     throw new Error(`Failed to parse token amount for mint ${mint.toBase58()}: ${err.message}`);
   }
