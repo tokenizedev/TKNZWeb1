@@ -10,7 +10,8 @@
     "deploy": "npm run build && netlify deploy --prod",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --loader ts-node/esm --test tests"
+    "test": "node --loader ts-node/esm --test tests/create-token-meteora.endpoint.test.ts",
+    "test:create-token": "ts-node-esm scripts/test-create-token.ts"
   },
   "dependencies": {
     "@meteora-ag/cp-amm-sdk": "^1.0.6",
