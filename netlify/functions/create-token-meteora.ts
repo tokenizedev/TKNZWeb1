@@ -18,6 +18,9 @@ import { mplTokenMetadata, createMetadataAccountV3, DataV2 } from '@metaplex-fou
 import BN from 'bn.js';
 import dotenv from 'dotenv';
 dotenv.config();
+// Default curve parameters and deposit settings
+const DEFAULT_INITIAL_PRICE = 0.00001; // SOL per token
+const DEFAULT_SOL_DEPOSIT = 0.01;      // SOL to deposit into pool (~$1 at 100 SOL/USD)
 //import { parseTokenAmount } from '../../src/amm';
 import { NATIVE_MINT } from '@solana/spl-token';
 
@@ -79,13 +82,15 @@ interface CreateMeteoraTokenRequest {
     telegram?: string;
   };
   decimals?: number;        // optional, default to 9
-  initialSupply?: number;   // optional, default to 0
+  initialSupply?: number;   // optional, default to 1_000_000_000 (1 billion tokens)
   portalParams?: {
-    amount: number;         // SOL to deposit into pool
-    priorityFee?: number;   // SOL fee to collect
-    slippage?: number;
-    mint?: string;
-    pool?: string;
+    initialPrice?: number;    // optional, SOL per token initial price (defaults to DEFAULT_INITIAL_PRICE)
+    amount?: number;          // SOL to deposit into pool (defaults to 0.01)
+    priorityFee?: number;     // SOL fee to collect
+    slippage?: number;        // slippage tolerance (not currently enforced)
+    poolSupply?: number;      // number of tokens to seed the pool (overrides amount/initialPrice calc)
+    mint?: string;            // optional existing mint override
+    pool?: string;            // optional existing pool override
   };
 }
 
@@ -131,7 +136,7 @@ export const handler: Handler = async (event) => {
   } catch (e) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON in request body' }) };
   }
-  const { walletAddress, token, decimals = 9, initialSupply = 0, isLockLiquidity = false, portalParams } = req;
+  const { walletAddress, token, decimals = 9, initialSupply = 1000000000, isLockLiquidity = true, portalParams } = req;
   // Validate inputs
   if (!walletAddress || typeof walletAddress !== 'string') {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid walletAddress' }) };
@@ -199,6 +204,18 @@ export const handler: Handler = async (event) => {
     // Calculate raw initial supply in smallest units: amountUi * 10^decimals
     const multiplier = new BN(10).pow(new BN(decimals));
     const initialSupplyRaw = new BN(initialSupply).mul(multiplier);
+    // Determine pool supply based on desired initial price (SOL per token)
+    // Determine initial AMM pricing and deposit amount
+    const initialPrice = portalParams?.initialPrice ?? DEFAULT_INITIAL_PRICE;
+    // Ensure minimum deposit for pool to guard against micro-farming
+    const solDepositUi = (portalParams?.amount != null && portalParams.amount >= DEFAULT_SOL_DEPOSIT)
+      ? portalParams.amount
+      : DEFAULT_SOL_DEPOSIT;
+    // Compute how many tokens to seed the pool
+    const poolSupplyUnits = portalParams?.poolSupply != null
+      ? portalParams.poolSupply
+      : Math.floor(solDepositUi / initialPrice);
+    const poolSupplyRaw = new BN(poolSupplyUnits).mul(multiplier);
     console.log('RPC_ENDPOINT', RPC_ENDPOINT);
     // Build separate instruction sets: mint+metadata and pool+deposit
     const instructionsMint: TransactionInstruction[] = [];
@@ -287,14 +304,15 @@ export const handler: Handler = async (event) => {
         TOKEN_PROGRAM_ID
       )
     );
-    // 4) Mint initial supply to user's ATA if > 0
-    if (initialSupply > 0) {
+    // 4) Mint total tokens to user's ATA (initial supply + pool supply)
+    if (initialSupply >= 0) {
+      const totalMintRaw = initialSupplyRaw.add(poolSupplyRaw);
       instructionsMint.push(
         createMintToInstruction(
           mintPubkey,
           ata,
           userPubkey,
-          BigInt(initialSupplyRaw.toString()),
+          BigInt(totalMintRaw.toString()),
           [],
           TOKEN_PROGRAM_ID
         )
@@ -303,8 +321,7 @@ export const handler: Handler = async (event) => {
     
     // 5) Deposit fee (if any) and prepare pool via CP-AMM (pool instructions)
     const cpAmm = new CpAmm(connection);
-    // Determine deposit and optional extra fee in SOL
-    const solDepositUi = portalParams?.amount ?? 0.01;
+    // Determine optional fee in SOL (deposit amount solDepositUi defined above)
     const feeUi = portalParams?.priorityFee ?? 0;  // no extra fee by default when AMM config handles fees
     const depositLamports = Math.round(solDepositUi * LAMPORTS_PER_SOL);
     const feeLamports = Math.round(feeUi * LAMPORTS_PER_SOL);
@@ -324,7 +341,7 @@ export const handler: Handler = async (event) => {
       );
     }
     // Set token amounts for pool initialization
-    const tokenAAmountBN = initialSupplyRaw;
+    const tokenAAmountBN = poolSupplyRaw;
     const tokenBAmountBN = new BN(depositLamports);
     // Define price bounds
     const minSqrtPrice = new BN(0);
