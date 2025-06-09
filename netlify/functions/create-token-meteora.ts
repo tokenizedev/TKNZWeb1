@@ -24,14 +24,16 @@ const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
-// Treasury keypair to hold all LP positions and swap fees
-if (!process.env.TREASURY_SECRET_KEY) {
-  throw new Error('Missing TREASURY_SECRET_KEY env var');
+// Optional treasury keypair (if provided) to hold all LP positions and swap fees
+let TREASURY_KEYPAIR: Keypair | null = null;
+let TREASURY_PUBKEY: PublicKey | null = null;
+if (process.env.TREASURY_SECRET_KEY) {
+  console.log('Treasury keypair found');
+  TREASURY_KEYPAIR = Keypair.fromSecretKey(
+    Uint8Array.from(JSON.parse(process.env.TREASURY_SECRET_KEY))
+  );
+  TREASURY_PUBKEY = TREASURY_KEYPAIR.publicKey;
 }
-const TREASURY_KEYPAIR = Keypair.fromSecretKey(
-  Uint8Array.from(JSON.parse(process.env.TREASURY_SECRET_KEY))
-);
-const TREASURY_PUBKEY = TREASURY_KEYPAIR.publicKey;
 // Default curve parameters and deposit settings
 const DEFAULT_INITIAL_PRICE = 0.00001; // SOL per token
 const DEFAULT_SOL_DEPOSIT = 0.01;      // SOL to deposit into pool (~$1 at 100 SOL/USD)
@@ -206,10 +208,10 @@ export const handler: Handler = async (event) => {
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: CP_AMM_STATIC_CONFIG not found on-chain' }) };
     }
     
-    // Generate new mint keypair; reuse treasury for pool position NFT
+    // Generate new mint keypair; reuse treasury for pool position NFT if provided
     const mintKeypair = Keypair.generate();
     const mintPubkey = mintKeypair.publicKey;
-    const positionNftKeypair = TREASURY_KEYPAIR;
+    const positionNftKeypair = TREASURY_KEYPAIR ?? Keypair.generate();
     // Derive user's ATA for new mint
     const ata = getAssociatedTokenAddressSync(mintPubkey, userPubkey, true, TOKEN_PROGRAM_ID);
     // Compute rent exemption for mint
@@ -390,9 +392,11 @@ export const handler: Handler = async (event) => {
     await redis.hset(poolKey, 'deployer', walletAddress);
     await redis.hset(poolKey, 'mint', mintPubkey.toBase58());
     // Build pool creation transaction
+    // Decide pool creator: treasury if provided, else user
+    const poolCreator = TREASURY_PUBKEY ?? userPubkey;
     const poolTx = await cpAmm.createPool({
       payer: userPubkey,
-      creator: TREASURY_PUBKEY,
+      creator: poolCreator,
       config: configPubkey,
       positionNft: positionNftKeypair.publicKey,
       tokenAMint: mintPubkey,
