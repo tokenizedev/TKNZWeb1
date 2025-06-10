@@ -1,5 +1,14 @@
 import { Handler } from '@netlify/functions';
 import { Redis } from '@upstash/redis';
+import { format } from 'date-fns';
+
+function escapeHTML(text) {
+  if (typeof text !== 'string') text = String(text);
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 /**
  * Endpoint to send a notification for a newly launched token via Telegram.
@@ -68,11 +77,37 @@ export const handler: Handler = async (event) => {
     console.error('Redis notify-set check error', err);
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Error checking notifications' }) };
   }
+  const xUrl = payload.token?.twitter || '';
+  const image = payload.token?.imageUrl || '';
   // Build Telegram message
   const name = payload.token?.name || '';
   const symbol = payload.token?.ticker || '';
   const pool = payload.pool || '';
-  const pumpUrl = payload.pumpUrl || `https://pump.fun/coin/${mint}`;
+  const poolUrl = `https://v2.meteora.ag/damm/${pool}`;
+   // Construct HTML caption
+   const tknzLink = `<a href="${poolUrl}">View on Meteora</a>`;
+   const xLink = payload.token?.twitter ? `<a href="${xUrl}">View on X</a>` : '';
+   const date = new Date(Number(payload.createdAt));
+   const formattedLaunchTime = format(date, 'MMM d, yyyy h:mm a');
+   const escapedName = escapeHTML(name);
+   const escapedTicker = escapeHTML(symbol);
+   const escapedFormattedLaunchTime = escapeHTML(formattedLaunchTime);
+   
+   const caption = `<b>🚀 New Token Launch on Meteora!</b>\n\n` +
+     `<b>🪙 Name:</b> ${escapedName}\n` +
+     `<b>📈 Ticker:</b> $${escapedTicker}\n` +
+     `<b>🌐</b> ${tknzLink}\n` +
+     (xUrl ? `<b>🐦</b> ${xLink}\n` : '') +
+     `<b>🔗 Launched:</b> ${escapedFormattedLaunchTime}`;
+   
+   const body = {
+     chat_id: CHAT_ID,
+     message_thread_id: THREAD_ID,
+     photo: image,
+     caption: caption,
+     parse_mode: 'HTML',
+   };
+
   const text = `🎉 *New Token Launched!*
 *${name}* (${symbol})
 Mint: \\`${mint}\\`
