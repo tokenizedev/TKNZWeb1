@@ -10,6 +10,10 @@ function escapeHTML(text) {
     .replace(/>/g, '&gt;');
 }
 
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const THREAD_ID = 20934; // Forum topic ID for "Token launches"
+
 /**
  * Endpoint to send a notification for a newly launched token via Telegram.
  * Ensures the token is in the v2 leaderboard, hasn't been notified yet,
@@ -77,13 +81,15 @@ export const handler: Handler = async (event) => {
     console.error('Redis notify-set check error', err);
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Error checking notifications' }) };
   }
+  
   const xUrl = payload.token?.twitter || '';
-  const image = payload.token?.imageUrl || '';
+  const image = payload.token?.imageUrl || 'https://placehold.co/600x400.png?text=TKNZ';
   // Build Telegram message
   const name = payload.token?.name || '';
   const symbol = payload.token?.ticker || '';
   const pool = payload.pool || '';
   const poolUrl = `https://v2.meteora.ag/damm/${pool}`;
+
    // Construct HTML caption
    const tknzLink = `<a href="${poolUrl}">View on Meteora</a>`;
    const xLink = payload.token?.twitter ? `<a href="${xUrl}">View on X</a>` : '';
@@ -108,22 +114,12 @@ export const handler: Handler = async (event) => {
      parse_mode: 'HTML',
    };
 
-  const text = `🎉 *New Token Launched!*
-*${name}* (${symbol})
-Mint: \\`${mint}\\`
-Pool: \\`${pool}\\`
-[View on Pump.fun](${pumpUrl})`;
   // Send via Telegram
   try {
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text,
-        parse_mode: 'Markdown',
-        disable_web_page_preview: false,
-      }),
+      body: JSON.stringify(body),
     });
   } catch (err) {
     console.error('Telegram send error', err);
