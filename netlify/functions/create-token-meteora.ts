@@ -208,10 +208,10 @@ export const handler: Handler = async (event) => {
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: CP_AMM_STATIC_CONFIG not found on-chain' }) };
     }
     
-    // Generate new mint keypair; reuse treasury for pool position NFT if provided
+    // Generate new mint keypair and a fresh keypair for the pool position NFT
     const mintKeypair = Keypair.generate();
     const mintPubkey = mintKeypair.publicKey;
-    const positionNftKeypair = TREASURY_KEYPAIR ?? Keypair.generate();
+    const positionNftKeypair = Keypair.generate();
     // Derive user's ATA for new mint
     const ata = getAssociatedTokenAddressSync(mintPubkey, userPubkey, true, TOKEN_PROGRAM_ID);
     // Compute rent exemption for mint
