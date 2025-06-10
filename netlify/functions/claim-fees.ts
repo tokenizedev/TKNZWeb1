@@ -1,9 +1,11 @@
 import { Handler } from '@netlify/functions';
 import { Redis } from '@upstash/redis';
 import dotenv from 'dotenv';
+import { Buffer } from 'buffer';
 import { Connection, Keypair, PublicKey, SystemProgram, VersionedTransaction, TransactionMessage, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
+  NATIVE_MINT,
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
   createTransferInstruction,
