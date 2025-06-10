@@ -109,6 +109,6 @@ export const handler: Handler = async (event) => {
   return {
     statusCode: 200,
     headers,
-    body: JSON.stringify({ success: true }),
+    body: JSON.stringify({ success: true, createdAt: timestamp }),
   };
 };
