@@ -1569,6 +1569,17 @@
     dotenv "^16.0.1"
     invariant "^2.2.4"
 
+"@meteora-ag/dynamic-bonding-curve-sdk@^1.2.3-rc.1":
+  version "1.2.3-rc.1"
+  resolved "https://registry.yarnpkg.com/@meteora-ag/dynamic-bonding-curve-sdk/-/dynamic-bonding-curve-sdk-1.2.3-rc.1.tgz#a5ec9422262f1e8fd4e70e3c97a8ec9f7cd791c3"
+  integrity sha512-xE82oiJrX/4ir7a3GReXzVJL6/EfGkSr50IQEz+JpJaYtomdBQJWc+5Shcx10/Qty8LGVZ7kR8emUwaTSb4qeQ==
+  dependencies:
+    "@coral-xyz/anchor" "^0.31.0"
+    "@solana/spl-token" "^0.4.13"
+    "@solana/web3.js" "^1.98.0"
+    bn.js "^5.2.1"
+    decimal.js "^10.5.0"
+
 "@meteora-ag/m3m3@1.0.10":
   version "1.0.10"
   resolved "https://registry.yarnpkg.com/@meteora-ag/m3m3/-/m3m3-1.0.10.tgz#f4a61884bf7f72ade9e0bbdc2ec10088ad5b713f"
@@ -4978,7 +4989,7 @@ decimal.js@10.3.1:
   resolved "https://registry.yarnpkg.com/decimal.js/-/decimal.js-10.3.1.tgz#d8c3a444a9c6774ba60ca6ad7261c3a94fd5e783"
   integrity sha512-V0pfhfr8suzyPGOx3nmq4aHqabehUZn6Ch9kyFpV79TGDTWFmHqUqXdabR7QHqxzrYolF4+tVmJhUG4OURg5dQ==
 
-decimal.js@^10.4.1, decimal.js@^10.4.2, decimal.js@^10.4.3:
+decimal.js@^10.4.1, decimal.js@^10.4.2, decimal.js@^10.4.3, decimal.js@^10.5.0:
   version "10.5.0"
   resolved "https://registry.yarnpkg.com/decimal.js/-/decimal.js-10.5.0.tgz#0f371c7cf6c4898ce0afb09836db73cd82010f22"
   integrity sha512-8vDa8Qxvr/+d94hSh5P3IJwI5t8/c0KsMp+g8bNw9cY2icONa5aPfvKeieW1WlG0WQYwwhJ7mjui2xtiePQSXw==
