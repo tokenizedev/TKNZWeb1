@@ -49,7 +49,7 @@ async function createTokenMetadata(token: {
   websiteUrl?: string;
   twitter?: string;
   telegram?: string;
-}): Promise<{ name: string; symbol: string; uri: string }> {
+}): Promise<{ name: string; symbol: string; uri: string; imageUrl: string }> {
   const { name, ticker, description, imageUrl, websiteUrl, twitter, telegram } = token;
   if (!imageUrl) {
     throw new Error('No image provided for token creation');
@@ -82,6 +82,7 @@ async function createTokenMetadata(token: {
     name: json.metadata.name,
     symbol: json.metadata.symbol,
     uri: json.metadataUri,
+    imageUrl: json.metadata.image,
   };
 }
 
@@ -445,6 +446,7 @@ export const handler: Handler = async (event) => {
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
+        tokenMetadata,
         pool: poolAddress.toBase58(),
         decimals,
         initialSupply,
