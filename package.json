@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test": "node --loader ts-node/esm --test tests/create-token-meteora.endpoint.test.ts",
     "test:notify": "ts-node-esm scripts/test-send-notification.ts",
-    "test:create-token": "ts-node-esm scripts/test-create-token.ts"
+    "test:create-token": "ts-node-esm scripts/test-create-token.ts",
+    "test:confirm-token": "ts-node-esm scripts/confirm-token-creation.ts"
   },
   "dependencies": {
     "@meteora-ag/alpha-vault": "^1.0.0",
