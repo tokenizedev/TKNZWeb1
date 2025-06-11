@@ -4,3 +4,4 @@ import { handler } from '../netlify/functions/update-leaderboard-background.js';
 dotenv.config();
 
 handler({}, {});
+
