@@ -9,6 +9,7 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { Buffer, Blob } from 'buffer';
+import BN from 'bn.js';
 // Removed CP-AMM integration; DBC will be used instead
 // import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
 import admin from 'firebase-admin';
@@ -27,7 +28,6 @@ import { createUmi } from '@metaplex-foundation/umi';
 // Removed unused web3JsRpc import; RPC is now configured via defaultPlugins
 import { defaultPlugins } from '@metaplex-foundation/umi-bundle-defaults';
 import { mplTokenMetadata, createMetadataAccountV3, DataV2 } from '@metaplex-foundation/mpl-token-metadata';
-import BN from 'bn.js';
 import dotenv from 'dotenv';
 dotenv.config();
 import { Redis } from '@upstash/redis';
@@ -370,6 +370,7 @@ export const handler: Handler = async (event) => {
     
     // Pre-calc fee and deposit values for DBC
     const feeUi = portalParams?.priorityFee ?? 0;
+    const feeLamports = Math.round(feeUi * LAMPORTS_PER_SOL);
     const depositLamports = Math.round(solDepositUi * LAMPORTS_PER_SOL);
     // 5) Create DBC config, pool, and initial buy via Meteora DBC SDK
     // Instantiate the DBC client
@@ -420,13 +421,31 @@ export const handler: Handler = async (event) => {
       // Fee claimer and leftover go to creator by default (overridden below)
       feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
       leftoverReceiver: userPubkey.toBase58(),
+      // Default locked vesting: no vesting (fields required by SDK)
+      lockedVesting: {
+        amountPerPeriod: new BN(0),
+        cliffDurationFromMigrationTime: new BN(0),
+        frequency: new BN(0),
+        numberOfPeriod: new BN(0),
+        cliffUnlockAmount: new BN(0),
+      },
     };
+    // Merge default curve parameters with any user overrides
     const curveConfigOverrides = portalParams?.curveConfig ?? {};
-    const curveConfig = { ...defaultCurveConfig, ...curveConfigOverrides };
-    // Build DBC transactions: create config, pool, and initial buy
+    const mergedCurveConfig: any = { ...defaultCurveConfig, ...curveConfigOverrides };
+    // Inject a default curve segment if none provided: a single point just above start price with initial liquidity
+    if (!mergedCurveConfig.curve || !Array.isArray(mergedCurveConfig.curve) || mergedCurveConfig.curve.length === 0) {
+      const eps = new BN(1);
+      mergedCurveConfig.curve = [
+        {
+          sqrtPrice: mergedCurveConfig.sqrtStartPrice.add(eps),
+          liquidity: poolSupplyRaw,
+        },
+      ];
+    }
     console.log('DBC defaultCurveConfig:', JSON.stringify(defaultCurveConfig, null, 2));
     console.log('DBC overrides:', JSON.stringify(curveConfigOverrides, null, 2));
-    console.log('Merged DBC configParam:', JSON.stringify(curveConfig, null, 2));
+    console.log('Merged DBC configParam:', JSON.stringify(mergedCurveConfig, null, 2));
     // Create config, pool, and initial buy in one step
     const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
       config: configPubkey.toBase58(),
@@ -434,19 +453,24 @@ export const handler: Handler = async (event) => {
       leftoverReceiver: userPubkey.toBase58(),
       quoteMint: NATIVE_MINT.toBase58(),
       payer: userPubkey.toBase58(),
-      // Spread merged curveConfig
-      ...curveConfig,
-      // Ensure tokenUpdateAuthority is set
-      tokenUpdateAuthority: curveConfig.tokenUpdateAuthority,
+      // Spread merged curve config (includes generated 'curve' and lockedVesting)
+      ...mergedCurveConfig,
+      // Explicitly set tokenUpdateAuthority
+      tokenUpdateAuthority: mergedCurveConfig.tokenUpdateAuthority,
+      // Parameters for creating the pool
       createPoolParam: {
-        baseMint: mintPubkey.toBase58(),
-        poolCreator: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
+        baseMint: mintPubkey,
+        poolCreator: TREASURY_PUBKEY ?? userPubkey,
         name: token.name,
         symbol: token.ticker,
         uri: tokenMetadata.uri,
       },
-      buyAmount: new BN(depositLamports),
-      minimumAmountOut: new BN(0),
+      // Parameters for initial buy
+      swapBuyParam: {
+        buyAmount: new BN(depositLamports),
+        minimumAmountOut: new BN(0),
+        referralTokenAccount: null,
+      },
     });
     // Append DBC instructions
     instructionsPool.push(...createConfigTx.instructions);
