@@ -389,6 +389,8 @@ export const handler: Handler = async (event) => {
         },
         dynamicFee: 10
       },
+      // Token update authority: 0 = Mutable, 1 = Immutable
+      tokenUpdateAuthority: 0,
       // Collect only quote fees
       collectFeeMode: 0,
       // Activate immediately via timestamp
@@ -402,8 +404,10 @@ export const handler: Handler = async (event) => {
       partnerLockedLpPercentage: 0,
       creatorLpPercentage: 95,
       creatorLockedLpPercentage: 0,
-      // Migration fee: 1.00% fixed
+      // Migration fee option: 1.00% fixed
       migrationFeeOption: 2,
+      // Migration fee parameters matching option (percentage, e.g., 1 for 1%)
+      migrationFee: { feePercentage: 1, creatorFeePercentage: 0 },
       // Standard SPL token, 9 decimals
       tokenType: 0,
       tokenDecimal: decimals,
@@ -420,6 +424,9 @@ export const handler: Handler = async (event) => {
     const curveConfigOverrides = portalParams?.curveConfig ?? {};
     const curveConfig = { ...defaultCurveConfig, ...curveConfigOverrides };
     // Build DBC transactions: create config, pool, and initial buy
+    console.log('DBC defaultCurveConfig:', JSON.stringify(defaultCurveConfig, null, 2));
+    console.log('DBC overrides:', JSON.stringify(curveConfigOverrides, null, 2));
+    console.log('Merged DBC configParam:', JSON.stringify(curveConfig, null, 2));
     // Create config, pool, and initial buy in one step
     const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
       config: configPubkey.toBase58(),
@@ -427,7 +434,10 @@ export const handler: Handler = async (event) => {
       leftoverReceiver: userPubkey.toBase58(),
       quoteMint: NATIVE_MINT.toBase58(),
       payer: userPubkey.toBase58(),
+      // Spread merged curveConfig
       ...curveConfig,
+      // Ensure tokenUpdateAuthority is set
+      tokenUpdateAuthority: curveConfig.tokenUpdateAuthority,
       createPoolParam: {
         baseMint: mintPubkey.toBase58(),
         poolCreator: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
