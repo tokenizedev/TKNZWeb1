@@ -12,7 +12,7 @@ import { Buffer, Blob } from 'buffer';
 // Removed CP-AMM integration; DBC will be used instead
 // import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
 import admin from 'firebase-admin';
-import { DynamicBondingCurveClient, deriveDbcPoolAddress, DYNAMIC_BONDING_CURVE_PROGRAM_ID } from '@meteora-ag/dynamic-bonding-curve-sdk';
+import { DynamicBondingCurveClient, deriveDbcPoolAddress, DYNAMIC_BONDING_CURVE_PROGRAM_ID, getSqrtPriceFromPrice } from '@meteora-ag/dynamic-bonding-curve-sdk';
 /**
  * Derive the on-chain config PDA for DBC using sequential index.
  */
@@ -379,14 +379,14 @@ export const handler: Handler = async (event) => {
       // Quote mint is SOL
       quoteMint: NATIVE_MINT.toBase58(),
       // Fees in BPS: 0.30% base, 0.10% dynamic
-      poolFees: { baseFee: 30, dynamicFee: 10 },
+      poolFees: { baseFee: new BN(30), dynamicFee: new BN(10) },
       // Collect only quote fees
       collectFeeMode: 0,
       // Activate immediately via timestamp
       activationType: 1,
       activationValue: Math.floor(Date.now() / 1000),
       // Migrate only after large volume (threshold = 100x initial deposit)
-      migrationQuoteThreshold: depositLamports * 100,
+      migrationQuoteThreshold: new BN(depositLamports).mul(new BN(100)),
       migrationOption: 0,
       // LP splits: 5% to platform, 95% to creator
       partnerLpPercentage: 5,
@@ -398,8 +398,12 @@ export const handler: Handler = async (event) => {
       // Standard SPL token, 9 decimals
       tokenType: 0,
       tokenDecimal: decimals,
-      // Start sqrt price = sqrt(initialPrice)
-      sqrtStartPrice: Math.sqrt(initialPrice),
+      // Start sqrt price = as Q64 fixed-point BN
+      sqrtStartPrice: getSqrtPriceFromPrice(
+        initialPrice.toString(),
+        decimals,
+        9 // SOL decimals
+      ),
       // Fee claimer and leftover go to creator by default (overridden below)
       feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
       leftoverReceiver: userPubkey.toBase58(),
