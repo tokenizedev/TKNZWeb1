@@ -407,7 +407,8 @@ export const handler: Handler = async (event) => {
     const curveConfigOverrides = portalParams?.curveConfig ?? {};
     const curveConfig = { ...defaultCurveConfig, ...curveConfigOverrides };
     // Build DBC transactions: create config, pool, and initial buy
-    const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.createConfigAndPoolWithFirstBuy({
+    // Create config, pool, and initial buy in one step
+    const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
       config: configPubkey.toBase58(),
       feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
       leftoverReceiver: userPubkey.toBase58(),
