@@ -44,10 +44,13 @@ export const handler: Handler = async (event) => {
     const pipe = redis.pipeline();
     tokens.forEach(({ mint }) => pipe.hgetall(`token:v2:${mint}`));
     const hashResults = await pipe.exec();
+    
     // Combine and parse entries
     const entries = tokens.map(({ mint, launchTime }, idx) => {
+      
       const rawDetails = hashResults[idx] as Record<string, string> | null;
       const entry: Record<string, any> = { mint, launchTime };
+      
       if (rawDetails && typeof rawDetails === 'object') {
         for (const [key, val] of Object.entries(rawDetails)) {
           if (val == null) continue;
@@ -56,10 +59,8 @@ export const handler: Handler = async (event) => {
             entry[key] = Number(val);
           } else if (key === 'isLockLiquidity') {
             entry[key] = val === 'true';
-          } else if (key === 'token' || key === 'portalParams') {
-            try { entry[key] = JSON.parse(val); } catch { entry[key] = null; }
           } else {
-            // Keep as string
+            // Keep as whatever it is
             entry[key] = val;
           }
         }
