@@ -10,10 +10,43 @@ function escapeHTML(text) {
     .replace(/>/g, '&gt;');
 }
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const THREAD_ID = 20934; // Forum topic ID for "Token launches"
+const TELEGRAM_THREAD_ID = 20934; // Forum topic ID for "Token launches"
 
+function createTelegramPhotoMessage(payload: any, TELEGRAM_CHAT_ID: string, TELEGRAM_THREAD_ID: number) {
+  const xUrl = payload.token?.twitter || '';
+  const image = payload.token?.imageUrl || 'https://placehold.co/600x400.png?text=TKNZ';
+  // Build Telegram message
+  const name = payload.token?.name || '';
+  const symbol = payload.token?.ticker || '';
+  const pool = payload.pool || '';
+  const poolUrl = `https://v2.meteora.ag/damm/${pool}`;
+
+   // Construct HTML caption
+   const tknzLink = `<a href="${poolUrl}">View on Meteora</a>`;
+   const xLink = payload.token?.twitter ? `<a href="${xUrl}">View on X</a>` : '';
+   const date = new Date(Number(payload.createdAt));
+   const formattedLaunchTime = format(date, 'MMM d, yyyy h:mm a');
+   const escapedName = escapeHTML(name);
+   const escapedTicker = escapeHTML(symbol);
+   const escapedFormattedLaunchTime = escapeHTML(formattedLaunchTime);
+   
+   const caption = `<b>🚀 New Token Launch on Meteora!</b>\n\n` +
+     `<b>🪙 Name:</b> ${escapedName}\n` +
+     `<b>📈 Ticker:</b> $${escapedTicker}\n` +
+     `<b>🌐</b> ${tknzLink}\n` +
+     (xUrl ? `<b>🐦</b> ${xLink}\n` : '') +
+     `<b>🔗 Launched:</b> ${escapedFormattedLaunchTime}`;
+   
+   const body = {
+     chat_id: TELEGRAM_CHAT_ID,
+     message_thread_id: TELEGRAM_THREAD_ID,
+     photo: image,
+     caption: caption,
+     parse_mode: 'HTML',
+   };
+
+   return body;
+}
 /**
  * Endpoint to send a notification for a newly launched token via Telegram.
  * Ensures the token is in the v2 leaderboard, hasn't been notified yet,
@@ -81,45 +114,13 @@ export const handler: Handler = async (event) => {
     console.error('Redis notify-set check error', err);
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Error checking notifications' }) };
   }
-  
-  const xUrl = payload.token?.twitter || '';
-  const image = payload.token?.imageUrl || 'https://placehold.co/600x400.png?text=TKNZ';
-  // Build Telegram message
-  const name = payload.token?.name || '';
-  const symbol = payload.token?.ticker || '';
-  const pool = payload.pool || '';
-  const poolUrl = `https://v2.meteora.ag/damm/${pool}`;
-
-   // Construct HTML caption
-   const tknzLink = `<a href="${poolUrl}">View on Meteora</a>`;
-   const xLink = payload.token?.twitter ? `<a href="${xUrl}">View on X</a>` : '';
-   const date = new Date(Number(payload.createdAt));
-   const formattedLaunchTime = format(date, 'MMM d, yyyy h:mm a');
-   const escapedName = escapeHTML(name);
-   const escapedTicker = escapeHTML(symbol);
-   const escapedFormattedLaunchTime = escapeHTML(formattedLaunchTime);
-   
-   const caption = `<b>🚀 New Token Launch on Meteora!</b>\n\n` +
-     `<b>🪙 Name:</b> ${escapedName}\n` +
-     `<b>📈 Ticker:</b> $${escapedTicker}\n` +
-     `<b>🌐</b> ${tknzLink}\n` +
-     (xUrl ? `<b>🐦</b> ${xLink}\n` : '') +
-     `<b>🔗 Launched:</b> ${escapedFormattedLaunchTime}`;
-   
-   const body = {
-     chat_id: CHAT_ID,
-     message_thread_id: THREAD_ID,
-     photo: image,
-     caption: caption,
-     parse_mode: 'HTML',
-   };
 
   // Send via Telegram
   try {
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(createTelegramPhotoMessage(payload, TELEGRAM_CHAT_ID, TELEGRAM_THREAD_ID)),
     });
   } catch (err) {
     console.error('Telegram send error', err);
