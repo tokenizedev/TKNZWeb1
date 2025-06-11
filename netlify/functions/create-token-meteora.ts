@@ -12,7 +12,7 @@ import { Buffer, Blob } from 'buffer';
 // Removed CP-AMM integration; DBC will be used instead
 // import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
 import admin from 'firebase-admin';
-import { DynamicBondingCurveClient, deriveDbcPoolAddress, DYNAMIC_BONDING_CURVE_PROGRAM_ID, getSqrtPriceFromPrice } from '@meteora-ag/dynamic-bonding-curve-sdk';
+import { DynamicBondingCurveClient, deriveDbcPoolAddress, DYNAMIC_BONDING_CURVE_PROGRAM_ID, getSqrtPriceFromPrice, bpsToFeeNumerator, FeeSchedulerMode } from '@meteora-ag/dynamic-bonding-curve-sdk';
 /**
  * Derive the on-chain config PDA for DBC using sequential index.
  */
@@ -379,7 +379,16 @@ export const handler: Handler = async (event) => {
       // Quote mint is SOL
       quoteMint: NATIVE_MINT.toBase58(),
       // Fees in BPS: 0.30% base, 0.10% dynamic
-      poolFees: { baseFee: new BN(30), dynamicFee: new BN(10) },
+      poolFees: {
+        baseFee: {
+          cliffFeeNumerator: bpsToFeeNumerator(30),
+          numberOfPeriod: 1,
+          periodFrequency: new BN(0),
+          reductionFactor: new BN(0),
+          feeSchedulerMode: FeeSchedulerMode.Constant
+        },
+        dynamicFee: 10
+      },
       // Collect only quote fees
       collectFeeMode: 0,
       // Activate immediately via timestamp
