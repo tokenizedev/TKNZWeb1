@@ -9,7 +9,19 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { Buffer, Blob } from 'buffer';
-import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
+// Removed CP-AMM integration; DBC will be used instead
+// import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
+import admin from 'firebase-admin';
+import { DynamicBondingCurveClient, deriveDbcPoolAddress, DYNAMIC_BONDING_CURVE_PROGRAM_ID } from '@meteora-ag/dynamic-bonding-curve-sdk';
+/**
+ * Derive the on-chain config PDA for DBC using sequential index.
+ */
+function deriveConfigAddress(index: BN): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('config'), index.toArrayLike(Buffer, 'le', 8)],
+    DYNAMIC_BONDING_CURVE_PROGRAM_ID
+  )[0];
+}
 // Metaplex Token Metadata
 import { createUmi } from '@metaplex-foundation/umi';
 // Removed unused web3JsRpc import; RPC is now configured via defaultPlugins
@@ -176,7 +188,47 @@ export const handler: Handler = async (event) => {
     const tokenMetadata = await createTokenMetadata(token);
     console.log('Token metadata URI:', tokenMetadata.uri);
     
-    // Prepare Solana connection and keys
+  // Initialize Firebase Admin SDK (for config indexing)
+  if (!admin.apps.length) {
+    const { FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY } = process.env;
+    if (!FIREBASE_PROJECT_ID || !FIREBASE_CLIENT_EMAIL || !FIREBASE_PRIVATE_KEY) {
+      console.error('Missing Firebase env vars for DBC config index');
+      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: Firebase env vars missing' }) };
+    }
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: FIREBASE_PROJECT_ID,
+        clientEmail: FIREBASE_CLIENT_EMAIL,
+        privateKey: FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+    });
+  }
+  const firestore = admin.firestore();
+  // Atomically allocate the next config index for DBC
+  const counterRef = firestore.collection('counters').doc('dbcConfigIndex');
+  let configIndex: number;
+  try {
+    configIndex = await firestore.runTransaction(async tx => {
+      const doc = await tx.get(counterRef);
+      let next = 1;
+      if (doc.exists) {
+        const data = doc.data();
+        if (typeof data?.nextIndex === 'number') next = data.nextIndex;
+      }
+      // increment for next use
+      tx.set(counterRef, { nextIndex: next + 1 }, { merge: true });
+      return next;
+    });
+  } catch (err) {
+    console.error('Error allocating DBC config index:', err);
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to allocate config index' }) };
+  }
+  // Derive the DBC config PDA
+  const configIndexBn = new BN(configIndex);
+  const configPubkey = deriveConfigAddress(configIndexBn);
+  console.log('Derived DBC config address:', configPubkey.toBase58());
+  
+  // Prepare Solana connection and keys
     const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=5e4edb76-36ed-4740-942d-7843adcc1e22';
     if (!RPC_ENDPOINT) {
       console.error('Missing RPC_ENDPOINT');
@@ -190,29 +242,9 @@ export const handler: Handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid walletAddress' }) };
     }
     
-    // Validate fee config account from env
-    const CP_AMM_CONFIG = process.env.CP_AMM_STATIC_CONFIG;
-    if (!CP_AMM_CONFIG) {
-      console.error('Missing CP_AMM_STATIC_CONFIG');
-      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: CP_AMM_STATIC_CONFIG' }) };
-    }
-    let configPubkey: PublicKey;
-    try {
-      configPubkey = new PublicKey(CP_AMM_CONFIG);
-    } catch (err) {
-      console.error('Invalid CP_AMM_STATIC_CONFIG public key');
-      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: invalid CP_AMM_STATIC_CONFIG' }) };
-    }
-    const configInfo = await connection.getAccountInfo(configPubkey);
-    if (!configInfo) {
-      console.error(`Fee config account not found on-chain: ${configPubkey.toBase58()}`);
-      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: CP_AMM_STATIC_CONFIG not found on-chain' }) };
-    }
-    
-    // Generate new mint keypair and a fresh keypair for the pool position NFT
+    // Generate new mint keypair
     const mintKeypair = Keypair.generate();
     const mintPubkey = mintKeypair.publicKey;
-    const positionNftKeypair = Keypair.generate();
     // Derive user's ATA for new mint
     const ata = getAssociatedTokenAddressSync(mintPubkey, userPubkey, true, TOKEN_PROGRAM_ID);
     // Compute rent exemption for mint
@@ -336,83 +368,76 @@ export const handler: Handler = async (event) => {
       );
     }
     
-    // 5) Deposit fee (if any) and prepare pool via CP-AMM (pool instructions)
-    const cpAmm = new CpAmm(connection);
-    // Determine optional fee in SOL (deposit amount solDepositUi defined above)
-    const feeUi = portalParams?.priorityFee ?? 0;  // no extra fee by default when AMM config handles fees
+    // Pre-calc fee and deposit values for DBC
+    const feeUi = portalParams?.priorityFee ?? 0;
     const depositLamports = Math.round(solDepositUi * LAMPORTS_PER_SOL);
-    const feeLamports = Math.round(feeUi * LAMPORTS_PER_SOL);
-    // Collect fee if specified
-    if (feeLamports > 0) {
-      const feeAccount = process.env.TREASURY_ACCOUNT;
-      if (!feeAccount) {
-        throw new Error('Missing TREASURY_ACCOUNT env var for fee collection');
-      }
-      const feePubkey = new PublicKey(feeAccount);
-      instructionsPool.push(
-        SystemProgram.transfer({
-          fromPubkey: userPubkey,
-          toPubkey: feePubkey,
-          lamports: feeLamports,
-        })
-      );
-    }
-    // Set token amounts for pool initialization
-    const tokenAAmountBN = poolSupplyRaw;
-    const tokenBAmountBN = new BN(depositLamports);
-    // Define price bounds
-    const minSqrtPrice = new BN(0);
-    const maxSqrtPrice = new BN('340282366920938463463374607431768211455');
-    let initSqrtPrice: BN;
-    let liquidityDelta: BN;
-    if (tokenAAmountBN.gt(new BN(0)) && tokenBAmountBN.eq(new BN(0))) {
-      // Single-sided pool creation: init price == min price
-      initSqrtPrice = minSqrtPrice;
-      liquidityDelta = cpAmm.preparePoolCreationSingleSide({
-        tokenAAmount: tokenAAmountBN,
-        initSqrtPrice,
-        minSqrtPrice,
-        maxSqrtPrice,
-      });
-    } else {
-      // Two-sided pool creation, with SOL deposit
-      const poolPrep = cpAmm.preparePoolCreationParams({
-        tokenAAmount: tokenAAmountBN,
-        tokenBAmount: tokenBAmountBN,
-        minSqrtPrice,
-        maxSqrtPrice,
-      });
-      initSqrtPrice = poolPrep.initSqrtPrice;
-      liquidityDelta = poolPrep.liquidityDelta;
-    }
-    // Derive pool address
-    const poolAddress = derivePoolAddress(configPubkey, mintPubkey, NATIVE_MINT);
-    console.log('Derived pool address:', poolAddress.toBase58());
-    // Store pool => deployer & mint mapping for fee claims
-    const poolKey = `pool:${poolAddress.toBase58()}`;
+    // 5) Create DBC config, pool, and initial buy via Meteora DBC SDK
+    // Instantiate the DBC client
+    const dbcClient = new DynamicBondingCurveClient(connection, 'confirmed');
+    // Merge default curve parameters (based on pump.fun) with any user overrides
+    const defaultCurveConfig = {
+      // Quote mint is SOL
+      quoteMint: NATIVE_MINT.toBase58(),
+      // Fees in BPS: 0.30% base, 0.10% dynamic
+      poolFees: { baseFee: 30, dynamicFee: 10 },
+      // Collect only quote fees
+      collectFeeMode: 0,
+      // Activate immediately via timestamp
+      activationType: 1,
+      activationValue: Math.floor(Date.now() / 1000),
+      // Migrate only after large volume (threshold = 100x initial deposit)
+      migrationQuoteThreshold: depositLamports * 100,
+      migrationOption: 0,
+      // LP splits: 5% to platform, 95% to creator
+      partnerLpPercentage: 5,
+      partnerLockedLpPercentage: 0,
+      creatorLpPercentage: 95,
+      creatorLockedLpPercentage: 0,
+      // Migration fee: 1.00% fixed
+      migrationFeeOption: 2,
+      // Standard SPL token, 9 decimals
+      tokenType: 0,
+      tokenDecimal: decimals,
+      // Start sqrt price = sqrt(initialPrice)
+      sqrtStartPrice: Math.sqrt(initialPrice),
+      // Fee claimer and leftover go to creator by default (overridden below)
+      feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
+      leftoverReceiver: userPubkey.toBase58(),
+    };
+    const curveConfigOverrides = portalParams?.curveConfig ?? {};
+    const curveConfig = { ...defaultCurveConfig, ...curveConfigOverrides };
+    // Build DBC transactions: create config, pool, and initial buy
+    const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.createConfigAndPoolWithFirstBuy({
+      config: configPubkey.toBase58(),
+      feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
+      leftoverReceiver: userPubkey.toBase58(),
+      quoteMint: NATIVE_MINT.toBase58(),
+      payer: userPubkey.toBase58(),
+      ...curveConfig,
+      createPoolParam: {
+        baseMint: mintPubkey.toBase58(),
+        poolCreator: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
+        name: token.name,
+        symbol: token.ticker,
+        uri: tokenMetadata.uri,
+      },
+      buyAmount: new BN(depositLamports),
+      minimumAmountOut: new BN(0),
+    });
+    // Append DBC instructions
+    instructionsPool.push(...createConfigTx.instructions);
+    instructionsPool.push(...createPoolTx.instructions);
+    instructionsPool.push(...swapBuyTx.instructions);
+    // Derive DBC pool PDA and store mapping
+    const poolAddress = deriveDbcPoolAddress(
+      NATIVE_MINT,
+      mintPubkey,
+      configPubkey
+    );
+    console.log('Derived DBC pool address:', poolAddress.toBase58());
+    const poolKey = `dbcPool:${poolAddress.toBase58()}`;
     await redis.hset(poolKey, 'deployer', walletAddress);
     await redis.hset(poolKey, 'mint', mintPubkey.toBase58());
-    // Build pool creation transaction
-    // Decide pool creator: treasury if provided, else user
-    const poolCreator = TREASURY_PUBKEY ?? userPubkey;
-    const poolTx = await cpAmm.createPool({
-      payer: userPubkey,
-      creator: poolCreator,
-      config: configPubkey,
-      positionNft: positionNftKeypair.publicKey,
-      tokenAMint: mintPubkey,
-      tokenBMint: NATIVE_MINT,
-      initSqrtPrice,
-      liquidityDelta,
-      tokenAAmount: tokenAAmountBN,
-      tokenBAmount: tokenBAmountBN,
-      activationPoint: null,
-      tokenAProgram: TOKEN_PROGRAM_ID,
-      tokenBProgram: TOKEN_PROGRAM_ID,
-      isLockLiquidity,
-    });
-    // Append pool creation instructions
-    instructionsPool.push(...poolTx.instructions);
     
     // Compile first transaction: mint creation & metadata
     const { blockhash: blockhash1 } = await connection.getLatestBlockhash();
@@ -434,8 +459,8 @@ export const handler: Handler = async (event) => {
       instructions: instructionsPool,
     }).compileToV0Message();
     const tx2 = new VersionedTransaction(message2);
-    // Partially sign tx2 with position NFT keypair
-    tx2.sign([positionNftKeypair]);
+    // No server-side signing needed for DBC pool transaction; user will sign client-side
+    // tx2.sign([]);
     const serialized2 = Buffer.from(tx2.serialize()).toString('base64');
     return {
       statusCode: 200,
