@@ -52,8 +52,9 @@ async function main() {
     },
     isLockLiquidity: false,
     portalParams: {
-      amount: 0.01,         // SOL to deposit into pool side B
-      priorityFee: 0,    // SOL fee to treasury
+      amount: 0.01,        // SOL to deposit into pool side B
+      priorityFee: 0,      // SOL fee to treasury
+      curveConfig: {}      // optional custom bonding curve overrides
     },
   };
   console.log('Request payload:', payload);
