@@ -18,6 +18,7 @@
   "dependencies": {
     "@meteora-ag/alpha-vault": "^1.0.0",
     "@meteora-ag/cp-amm-sdk": "^1.0.6",
+    "@meteora-ag/dynamic-bonding-curve-sdk": "^1.2.3-rc.1",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.97.0",
     "@tailwindcss/typography": "^0.5.10",
