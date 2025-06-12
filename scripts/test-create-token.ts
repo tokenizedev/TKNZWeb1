@@ -74,15 +74,9 @@ async function main() {
   }
   const txs = data.transactions.map((b64: string, idx: number) => {
     const buf = Buffer.from(b64, 'base64');
-    const oldTx = VersionedTransaction.deserialize(buf);
-    let tx: VersionedTransaction;
-    if (idx === 0) {
-      // Keep server-side partial signature for mint keypair
-      tx = oldTx;
-    } else {
-      // Re-create fresh tx from message to avoid stale signature slots
-      tx = new VersionedTransaction(oldTx.message);
-    }
+    const tx = VersionedTransaction.deserialize(buf);
+    
+    
     console.log(`Deserialized tx ${idx} version:`, tx.message.version);
     return tx;
   });
