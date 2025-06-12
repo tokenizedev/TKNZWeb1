@@ -74,7 +74,15 @@ async function main() {
   }
   const txs = data.transactions.map((b64: string, idx: number) => {
     const buf = Buffer.from(b64, 'base64');
-    const tx = VersionedTransaction.deserialize(buf);
+    const oldTx = VersionedTransaction.deserialize(buf);
+    let tx: VersionedTransaction;
+    if (idx === 0) {
+      // Keep server-side partial signature for mint keypair
+      tx = oldTx;
+    } else {
+      // Re-create fresh tx from message to avoid stale signature slots
+      tx = new VersionedTransaction(oldTx.message);
+    }
     console.log(`Deserialized tx ${idx} version:`, tx.message.version);
     return tx;
   });
@@ -114,13 +122,13 @@ async function main() {
         }
       }
       if (typeof err.transactionMessage === 'string') {
-        console.error('Transaction1 message:', err.transactionMessage);
+        console.error(`Transaction ${i} message:`, err.transactionMessage);
       }
       if (Array.isArray(err.transactionLogs)) {
-        console.error('Simulation1 logs:');
+        console.error(`Simulation ${i} logs:`);
         for (const logLine of err.transactionLogs) console.error(logLine);
       } else if (Array.isArray(err.logs)) {
-        console.error('Simulation1 logs:');
+        console.error(`Simulation ${i} logs:`);
         for (const logLine of err.logs) console.error(logLine);
       }
       process.exit(1);
