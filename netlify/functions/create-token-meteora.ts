@@ -465,10 +465,8 @@ export const handler: Handler = async (event) => {
     });
     // Append DBC instructions
     // Collect DBC instructions into two groups: config steps (metadata + config) and trade steps (pool + swap)
-    const configIxs: TransactionInstruction[] = [
-      ...metadataIxs,
-      ...createConfigTx.instructions,
-    ];
+    // Config instructions (exclude metadata, which is in a separate TX)
+    const configIxs: TransactionInstruction[] = [...createConfigTx.instructions];
     const tradeIxs: TransactionInstruction[] = [
       ...createPoolTx.instructions,
       ...swapBuyTx.instructions,
