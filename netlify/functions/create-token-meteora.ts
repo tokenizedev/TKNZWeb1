@@ -463,15 +463,7 @@ export const handler: Handler = async (event) => {
         referralTokenAccount: null,
       },
     });
-    // Append DBC instructions
-    // Collect DBC instructions into two groups: config steps (metadata + config) and trade steps (pool + swap)
-    // Config instructions (exclude metadata, which is in a separate TX)
-    const configIxs: TransactionInstruction[] = [...createConfigTx.instructions];
-    const tradeIxs: TransactionInstruction[] = [
-      ...createPoolTx.instructions,
-      ...swapBuyTx.instructions,
-    ];
-    // Derive DBC pool PDA and store mapping
+    // Derive DBC pool address and store mapping
     const poolAddress = deriveDbcPoolAddress(
       NATIVE_MINT,
       mintPubkey,
@@ -481,49 +473,49 @@ export const handler: Handler = async (event) => {
     const poolKey = `dbcPool:${poolAddress.toBase58()}`;
     await redis.hset(poolKey, 'deployer', walletAddress);
     await redis.hset(poolKey, 'mint', mintPubkey.toBase58());
-    
-    // 1) Serialize mint transaction (with mint keypair partial signature)
-    const { blockhash: mintBh } = await connection.getLatestBlockhash();
-    const mintMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: mintBh, instructions: instructionsMint }).compileToV0Message();
-    const mintTx = new VersionedTransaction(mintMsg);
-    mintTx.sign([mintKeypair]);
-    const serializedMint = Buffer.from(mintTx.serialize()).toString('base64');
-    
-    // 2) Serialize config transaction (metadata + config instructions)
-    const { blockhash: cfgBh } = await connection.getLatestBlockhash();
-    const cfgMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: cfgBh, instructions: configIxs }).compileToV0Message();
-    const cfgTx = new VersionedTransaction(cfgMsg);
-    const serializedConfig = Buffer.from(cfgTx.serialize()).toString('base64');
-    
-    // 3) Dynamic chunk splitting for trade instructions (pool + swap)
-    const MAX_TX_BYTES = 1232;
-    const tradeChunks: string[] = [];
-    let chunkIxs: TransactionInstruction[] = [];
-    for (const ix of tradeIxs) {
-      chunkIxs.push(ix);
-      const { blockhash: tradeBh } = await connection.getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: tradeBh, instructions: chunkIxs }).compileToV0Message();
+    // Build and serialize exactly 5 transactions: mint, metadata, config, pool, swap
+    const txs: string[] = [];
+    // TX0: mint account creation & mintTo
+    {
+      const { blockhash: bh } = await connection.getLatestBlockhash();
+      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: instructionsMint }).compileToV0Message();
       const tx = new VersionedTransaction(msg);
-      if (Buffer.from(tx.serialize()).length > MAX_TX_BYTES) {
-        chunkIxs.pop();
-        const msgPrev = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: tradeBh, instructions: chunkIxs }).compileToV0Message();
-        const txPrev = new VersionedTransaction(msgPrev);
-        tradeChunks.push(Buffer.from(txPrev.serialize()).toString('base64'));
-        chunkIxs = [ix];
-      }
+      tx.sign([mintKeypair]);
+      txs.push(Buffer.from(tx.serialize()).toString('base64'));
     }
-    if (chunkIxs.length) {
-      const { blockhash: lastBh } = await connection.getLatestBlockhash();
-      const msgLast = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: lastBh, instructions: chunkIxs }).compileToV0Message();
-      const txLast = new VersionedTransaction(msgLast);
-      tradeChunks.push(Buffer.from(txLast.serialize()).toString('base64'));
+    // TX1: metadata creation
+    {
+      const { blockhash: bh } = await connection.getLatestBlockhash();
+      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: metadataIxs }).compileToV0Message();
+      const tx = new VersionedTransaction(msg);
+      txs.push(Buffer.from(tx.serialize()).toString('base64'));
     }
-    // Return all serialized transactions: mint, config, then trade chunks
+    // TX2: config creation
+    {
+      const { blockhash: bh } = await connection.getLatestBlockhash();
+      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: createConfigTx.instructions }).compileToV0Message();
+      const tx = new VersionedTransaction(msg);
+      txs.push(Buffer.from(tx.serialize()).toString('base64'));
+    }
+    // TX3: pool creation
+    {
+      const { blockhash: bh } = await connection.getLatestBlockhash();
+      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: createPoolTx.instructions }).compileToV0Message();
+      const tx = new VersionedTransaction(msg);
+      txs.push(Buffer.from(tx.serialize()).toString('base64'));
+    }
+    // TX4: initial swap
+    {
+      const { blockhash: bh } = await connection.getLatestBlockhash();
+      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: swapBuyTx.instructions }).compileToV0Message();
+      const tx = new VersionedTransaction(msg);
+      txs.push(Buffer.from(tx.serialize()).toString('base64'));
+    }
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        transactions: [serializedMint, serializedConfig, ...tradeChunks],
+        transactions: txs,
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
