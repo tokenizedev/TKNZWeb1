@@ -487,7 +487,9 @@ export const handler: Handler = async (event) => {
     await redis.hset(poolKey, 'deployer', walletAddress);
     await redis.hset(poolKey, 'mint', mintPubkey.toBase58());
     
-    // Compile first transaction: mint creation & metadata
+    // Prepare and serialize transactions: mint+metadata and one or more pool creation chunks
+    const MAX_TX_BYTES = 1232;
+    // 1) Mint + metadata transaction
     const { blockhash: blockhash1 } = await connection.getLatestBlockhash();
     const message1 = new TransactionMessage({
       payerKey: userPubkey,
@@ -495,27 +497,42 @@ export const handler: Handler = async (event) => {
       instructions: instructionsMint,
     }).compileToV0Message();
     const tx1 = new VersionedTransaction(message1);
-    // Partially sign tx1 with mint keypair
     tx1.sign([mintKeypair]);
     const serialized1 = Buffer.from(tx1.serialize()).toString('base64');
-
-    // Compile second transaction: pool creation & deposit
+    
+    // 2) Pool creation & deposit, split into chunks under size limit
     const { blockhash: blockhash2 } = await connection.getLatestBlockhash();
-    const message2 = new TransactionMessage({
-      payerKey: userPubkey,
-      recentBlockhash: blockhash2,
-      instructions: instructionsPool,
-    }).compileToV0Message();
-    const tx2 = new VersionedTransaction(message2);
-    // No server-side signing needed for DBC pool transaction; user will sign client-side
-    // tx2.sign([]);
-    const serialized2 = Buffer.from(tx2.serialize()).toString('base64');
+    const poolTxs: string[] = [];
+    let currentIxs: TransactionInstruction[] = [];
+    for (const ix of instructionsPool) {
+      // Tentatively add instruction
+      currentIxs.push(ix);
+      // Build candidate tx
+      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash2, instructions: currentIxs }).compileToV0Message();
+      const candidate = new VersionedTransaction(msg);
+      const size = Buffer.from(candidate.serialize()).length;
+      if (size > MAX_TX_BYTES) {
+        // Remove last instruction and finalize previous chunk
+        currentIxs.pop();
+        const msgChunk = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash2, instructions: currentIxs }).compileToV0Message();
+        const txChunk = new VersionedTransaction(msgChunk);
+        poolTxs.push(Buffer.from(txChunk.serialize()).toString('base64'));
+        // Start new chunk with current instruction
+        currentIxs = [ix];
+      }
+    }
+    // Add final chunk
+    if (currentIxs.length > 0) {
+      const msgFinal = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash2, instructions: currentIxs }).compileToV0Message();
+      const txFinal = new VersionedTransaction(msgFinal);
+      poolTxs.push(Buffer.from(txFinal.serialize()).toString('base64'));
+    }
+    // Return all serialized transactions
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        transaction1: serialized1,
-        transaction2: serialized2,
+        transactions: [serialized1, ...poolTxs],
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
