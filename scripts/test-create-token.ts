@@ -97,7 +97,24 @@ async function main() {
     await connection.confirmTransaction(signature, 'confirmed');
     console.log('Airdrop confirmed');
   }
-  // Submit transactions sequentially
+  // First, simulate all transactions to ensure success before sending
+  console.log('Simulating all transactions...');
+  for (let i = 0; i < txs.length; i++) {
+    try {
+      const sim = await connection.simulateTransaction(txs[i]);
+      if (sim.value.err) {
+        console.error(`Simulation failed on tx ${i}:`, sim.value.err);
+        if (sim.value.logs) sim.value.logs.forEach(l => console.error(l));
+        process.exit(1);
+      }
+      console.log(`Simulation passed for tx ${i}`);
+    } catch (simErr: any) {
+      console.error(`Error simulating tx ${i}:`, simErr);
+      process.exit(1);
+    }
+  }
+  console.log('All simulations passed. Submitting transactions...');
+  // Now, submit transactions sequentially
   for (let i = 0; i < txs.length; i++) {
     const raw = txs[i].serialize();
     let sig: string;
@@ -105,7 +122,7 @@ async function main() {
       sig = await connection.sendRawTransaction(raw);
       console.log(`Submitted tx ${i}, signature:`, sig);
     } catch (err: any) {
-      console.error(`Transaction ${i} simulation failed:`, err);
+      console.error(`Transaction ${i} submission failed:`, err);
       if (err instanceof SendTransactionError) {
         try {
           const fullLogs = await err.getLogs(connection);
