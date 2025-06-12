@@ -378,8 +378,8 @@ export const handler: Handler = async (event) => {
       collectFeeMode: 0,
       // Activate immediately via timestamp
       activationType: 1,
-      // Migrate only after large volume (threshold = 100x initial deposit)
-      migrationQuoteThreshold: new BN(depositLamports).mul(new BN(100)),
+      // Migrate threshold: minimal threshold (1 lamport) to ensure branch logic passes
+      migrationQuoteThreshold: new BN(1),
       migrationOption: 0,
       // Token settings: standard SPL token with specified decimals
       tokenType: 0,
