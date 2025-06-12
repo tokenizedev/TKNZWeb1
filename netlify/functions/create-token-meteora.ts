@@ -228,8 +228,9 @@ export const handler: Handler = async (event) => {
   const configPubkey = deriveConfigAddress(configIndexBn);
   console.log('Derived DBC config address:', configPubkey.toBase58());
   
-  // Prepare Solana connection and keys
-    const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=5e4edb76-36ed-4740-942d-7843adcc1e22';
+    // Prepare Solana connection and keys
+    // Allow overriding via SOLANA_RPC_URL or RPC_ENDPOINT env vars
+    const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || process.env.RPC_ENDPOINT || 'https://mainnet.helius-rpc.com/?api-key=5e4edb76-36ed-4740-942d-7843adcc1e22';
     if (!RPC_ENDPOINT) {
       console.error('Missing RPC_ENDPOINT');
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: RPC_ENDPOINT' }) };
@@ -270,15 +271,11 @@ export const handler: Handler = async (event) => {
     const instructionsMint: TransactionInstruction[] = [];
     const instructionsPool: TransactionInstruction[] = [];
     // 0) Create on-chain metadata account for the new mint (metadata instructions for second TX)
+    let metadataIxs: TransactionInstruction[] = [];
     {
-      // Initialize Umi context for metadata instruction using RPC endpoint
-      // Plugins must be loaded in correct order: defaults, RPC, metadata
-      // Initialize Umi context with default plugins and Token Metadata plugin
-      // Pass the existing Solana connection to defaultPlugins for RPC setup
       const umi = createUmi()
         .use(defaultPlugins(connection))
         .use(mplTokenMetadata());
-      // Prepare metadata data
       const metadataData: DataV2 = {
         name: token.name.substring(0, 32),
         symbol: token.ticker.substring(0, 10),
@@ -288,7 +285,6 @@ export const handler: Handler = async (event) => {
         collection: null,
         uses: null,
       };
-      // Build metadata account instruction via UMI and convert to web3.js instructions
       const metadataBuilder = createMetadataAccountV3(umi, {
         mint: mintPubkey,
         mintAuthority: userPubkey,
@@ -296,13 +292,10 @@ export const handler: Handler = async (event) => {
         updateAuthority: userPubkey,
         data: metadataData,
         isMutable: true,
-        // Explicitly set collectionDetails to null (Option.none)
         collectionDetails: null,
       });
-      // Convert UMI instructions to Solana Web3.js TransactionInstruction
       const umiIxs = metadataBuilder.getInstructions();
-      const web3Ixs = umiIxs.map((ix) => {
-        // Normalize pubkey to string if it's a PDA tuple
+      metadataIxs = umiIxs.map((ix) => {
         const keys = ix.keys.map(({ pubkey, isSigner, isWritable }) => {
           const addr = Array.isArray(pubkey) ? pubkey[0] : pubkey;
           return {
@@ -311,7 +304,6 @@ export const handler: Handler = async (event) => {
             isWritable,
           };
         });
-        // programId may also be PDA tuple or string
         const pidAddr = Array.isArray(ix.programId) ? ix.programId[0] : ix.programId;
         const programIdKey = typeof pidAddr === 'string' ? new PublicKey(pidAddr) : pidAddr;
         return new TransactionInstruction({
@@ -320,8 +312,7 @@ export const handler: Handler = async (event) => {
           data: ix.data,
         });
       });
-      // Add metadata creation instructions into the pool transaction (tx2)
-      instructionsPool.push(...web3Ixs);
+      instructionsPool.push(...metadataIxs);
     }
     // 1) Create mint account
     instructionsMint.push(
@@ -488,51 +479,47 @@ export const handler: Handler = async (event) => {
     await redis.hset(poolKey, 'mint', mintPubkey.toBase58());
     
     // Prepare and serialize transactions: mint+metadata and one or more pool creation chunks
-    const MAX_TX_BYTES = 1232;
-    // 1) Mint + metadata transaction
-    const { blockhash: blockhash1 } = await connection.getLatestBlockhash();
-    const message1 = new TransactionMessage({
-      payerKey: userPubkey,
-      recentBlockhash: blockhash1,
-      instructions: instructionsMint,
-    }).compileToV0Message();
-    const tx1 = new VersionedTransaction(message1);
-    tx1.sign([mintKeypair]);
-    const serialized1 = Buffer.from(tx1.serialize()).toString('base64');
+    // In local dev/test (localhost RPC), disable chunk splitting
+    const isLocal = RPC_ENDPOINT.includes('localhost') || RPC_ENDPOINT.includes('127.0.0.1');
+    const MAX_TX_BYTES = isLocal ? Infinity : 1232;
+    // 1) Mint transaction
+    const { blockhash: mintBh } = await connection.getLatestBlockhash();
+    const mintMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: mintBh, instructions: instructionsMint }).compileToV0Message();
+    const mintTx = new VersionedTransaction(mintMsg);
+    // Partially sign with mint keypair
+    mintTx.sign([mintKeypair]);
+    const serializedMint = Buffer.from(mintTx.serialize()).toString('base64');
     
-    // 2) Pool creation & deposit, split into chunks under size limit
-    const { blockhash: blockhash2 } = await connection.getLatestBlockhash();
-    const poolTxs: string[] = [];
-    let currentIxs: TransactionInstruction[] = [];
-    for (const ix of instructionsPool) {
-      // Tentatively add instruction
-      currentIxs.push(ix);
-      // Build candidate tx
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash2, instructions: currentIxs }).compileToV0Message();
-      const candidate = new VersionedTransaction(msg);
-      const size = Buffer.from(candidate.serialize()).length;
-      if (size > MAX_TX_BYTES) {
-        // Remove last instruction and finalize previous chunk
-        currentIxs.pop();
-        const msgChunk = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash2, instructions: currentIxs }).compileToV0Message();
-        const txChunk = new VersionedTransaction(msgChunk);
-        poolTxs.push(Buffer.from(txChunk.serialize()).toString('base64'));
-        // Start new chunk with current instruction
-        currentIxs = [ix];
-      }
-    }
-    // Add final chunk
-    if (currentIxs.length > 0) {
-      const msgFinal = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash2, instructions: currentIxs }).compileToV0Message();
-      const txFinal = new VersionedTransaction(msgFinal);
-      poolTxs.push(Buffer.from(txFinal.serialize()).toString('base64'));
-    }
-    // Return all serialized transactions
+    // 2) Metadata transaction
+    const { blockhash: metaBh } = await connection.getLatestBlockhash();
+    const metaMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: metaBh, instructions: metadataIxs }).compileToV0Message();
+    const metaTx = new VersionedTransaction(metaMsg);
+    const serializedMeta = Buffer.from(metaTx.serialize()).toString('base64');
+    
+    // 3) Config creation transaction
+    const { blockhash: cfgBh } = await connection.getLatestBlockhash();
+    const cfgMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: cfgBh, instructions: createConfigTx.instructions }).compileToV0Message();
+    const cfgTx = new VersionedTransaction(cfgMsg);
+    const serializedConfig = Buffer.from(cfgTx.serialize()).toString('base64');
+    
+    // 4) Pool creation transaction
+    const { blockhash: poolBh } = await connection.getLatestBlockhash();
+    const poolMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: poolBh, instructions: createPoolTx.instructions }).compileToV0Message();
+    const poolTx1 = new VersionedTransaction(poolMsg);
+    const serializedPool = Buffer.from(poolTx1.serialize()).toString('base64');
+    
+    // 5) Swap (initial buy) transaction
+    const { blockhash: swapBh } = await connection.getLatestBlockhash();
+    const swapMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: swapBh, instructions: swapBuyTx.instructions }).compileToV0Message();
+    const swapTx1 = new VersionedTransaction(swapMsg);
+    const serializedSwap = Buffer.from(swapTx1.serialize()).toString('base64');
+    
+    const allTxs = [serializedMint, serializedMeta, serializedConfig, serializedPool, serializedSwap];
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        transactions: [serialized1, ...poolTxs],
+        transactions: allTxs,
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
