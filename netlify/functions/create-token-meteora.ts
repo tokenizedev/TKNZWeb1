@@ -473,49 +473,49 @@ export const handler: Handler = async (event) => {
     const poolKey = `dbcPool:${poolAddress.toBase58()}`;
     await redis.hset(poolKey, 'deployer', walletAddress);
     await redis.hset(poolKey, 'mint', mintPubkey.toBase58());
-    // Build and serialize exactly 5 transactions: mint, metadata, config, pool, swap
-    const txs: string[] = [];
-    // TX0: mint account creation & mintTo
-    {
-      const { blockhash: bh } = await connection.getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: instructionsMint }).compileToV0Message();
+    // Build and serialize 2 transactions: mint and pool setup (config+pool+swap)
+    // TX0: mint (create account, initialize mint, mintTo)
+    const { blockhash: bh0 } = await connection.getLatestBlockhash();
+    const msg0 = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh0, instructions: instructionsMint }).compileToV0Message();
+    const tx0 = new VersionedTransaction(msg0);
+    tx0.sign([mintKeypair]);
+    const serialized0 = Buffer.from(tx0.serialize()).toString('base64');
+    // TX1: pool setup (config + pool + swap) -- skip metadata to avoid metadata program errors
+    // TX1+: Pool setup (config, pool creation, swap), split to fit transaction size
+    const poolIxs = [
+      ...createConfigTx.instructions,
+      ...createPoolTx.instructions,
+      ...swapBuyTx.instructions,
+    ];
+    const MAX_TX_BYTES = 1232;
+    const poolTxs: string[] = [];
+    let chunkIxs: TransactionInstruction[] = [];
+    for (const ix of poolIxs) {
+      chunkIxs.push(ix);
+      const { blockhash } = await connection.getLatestBlockhash();
+      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
       const tx = new VersionedTransaction(msg);
-      tx.sign([mintKeypair]);
-      txs.push(Buffer.from(tx.serialize()).toString('base64'));
+      if (Buffer.from(tx.serialize()).length > MAX_TX_BYTES) {
+        // Remove last instruction and finalize the chunk
+        const lastIx = chunkIxs.pop()!;
+        const prevMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
+        const prevTx = new VersionedTransaction(prevMsg);
+        poolTxs.push(Buffer.from(prevTx.serialize()).toString('base64'));
+        // Start new chunk with the oversized instruction
+        chunkIxs = [lastIx];
+      }
     }
-    // TX1: metadata creation
-    {
-      const { blockhash: bh } = await connection.getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: metadataIxs }).compileToV0Message();
-      const tx = new VersionedTransaction(msg);
-      txs.push(Buffer.from(tx.serialize()).toString('base64'));
-    }
-    // TX2: config creation
-    {
-      const { blockhash: bh } = await connection.getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: createConfigTx.instructions }).compileToV0Message();
-      const tx = new VersionedTransaction(msg);
-      txs.push(Buffer.from(tx.serialize()).toString('base64'));
-    }
-    // TX3: pool creation
-    {
-      const { blockhash: bh } = await connection.getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: createPoolTx.instructions }).compileToV0Message();
-      const tx = new VersionedTransaction(msg);
-      txs.push(Buffer.from(tx.serialize()).toString('base64'));
-    }
-    // TX4: initial swap
-    {
-      const { blockhash: bh } = await connection.getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh, instructions: swapBuyTx.instructions }).compileToV0Message();
-      const tx = new VersionedTransaction(msg);
-      txs.push(Buffer.from(tx.serialize()).toString('base64'));
+    if (chunkIxs.length > 0) {
+      const { blockhash } = await connection.getLatestBlockhash();
+      const msgLast = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
+      const lastTx = new VersionedTransaction(msgLast);
+      poolTxs.push(Buffer.from(lastTx.serialize()).toString('base64'));
     }
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        transactions: txs,
+        transactions: [serialized0, ...poolTxs],
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
