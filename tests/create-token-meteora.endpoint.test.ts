@@ -15,7 +15,7 @@ dotenv.config();
  * - Solana Test Validator must be running on http://localhost:8899
  * - RPC_ENDPOINT and CP_AMM_STATIC_CONFIG env vars provided to Netlify Dev
  */
-test.skip('create-token-meteora endpoint should return two valid & executable transactions', async () => {
+test('create-token-meteora endpoint should return valid & executable transactions', async () => {
   // Generate a fresh user keypair and use its pubkey as walletAddress
   const userKeypair = Keypair.generate();
   const walletAddress = userKeypair.publicKey.toBase58();
@@ -47,31 +47,24 @@ test.skip('create-token-meteora endpoint should return two valid & executable tr
   assert.strictEqual(response.status, 200, 'Expected HTTP 200 response');
 
   const data = response.data as Record<string, any>;
-  // Expect two transactions for mint+metadata and pool setup
-  assert.ok(data.transaction1, 'Response must include base64 transaction1');
-  assert.ok(data.transaction2, 'Response must include base64 transaction2');
+  // Expect an array of transactions for mint+metadata and pool setup
+  assert.ok(Array.isArray(data.transactions), 'Response must include transactions array');
+  assert.ok(data.transactions.length >= 2, 'Expected at least two transactions (mint + pool setup)');
   assert.ok(data.mint, 'Response must include new mint address');
   assert.ok(data.pool, 'Response must include new pool address');
 
-  // Deserialize and send first transaction (mint creation + metadata)
   const connection = new Connection(process.env.RPC_ENDPOINT || 'https://api.devnet.solana.com', 'confirmed');
-  // tx1: mint and metadata
-  const txBuf1 = Buffer.from(data.transaction1, 'base64');
-  const tx1 = VersionedTransaction.deserialize(txBuf1);
-  tx1.sign([userKeypair]);
-  const raw1 = tx1.serialize();
-  const sig1 = await connection.sendRawTransaction(raw1, { skipPreflight: false });
-  const conf1 = await connection.confirmTransaction(sig1, 'confirmed');
-  assert.strictEqual(conf1.value.err, null, 'First transaction should execute without error');
-  
-  // tx2: pool creation and deposit
-  const txBuf2 = Buffer.from(data.transaction2, 'base64');
-  const tx2 = VersionedTransaction.deserialize(txBuf2);
-  tx2.sign([userKeypair]);
-  const raw2 = tx2.serialize();
-  const sig2 = await connection.sendRawTransaction(raw2, { skipPreflight: false });
-  const conf2 = await connection.confirmTransaction(sig2, 'confirmed');
-  assert.strictEqual(conf2.value.err, null, 'Second transaction should execute without error');
+  // Iterate over all returned transactions and execute
+  for (let i = 0; i < data.transactions.length; i++) {
+    const txBase64 = data.transactions[i];
+    const txBuf = Buffer.from(txBase64, 'base64');
+    const tx = VersionedTransaction.deserialize(txBuf);
+    tx.sign([userKeypair]);
+    const raw = tx.serialize();
+    const sig = await connection.sendRawTransaction(raw, { skipPreflight: false });
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    assert.strictEqual(conf.value.err, null, `Transaction ${i} should execute without error`);
+  }
 
   // Verify on-chain accounts
   const mintInfo = await connection.getAccountInfo(data.mint);
