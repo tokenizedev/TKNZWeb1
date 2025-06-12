@@ -68,24 +68,23 @@ async function main() {
   const data = resp.data;
   console.log('Function response:', data);
 
-  // Deserialize the VersionedTransaction
-  // Expect two transactions: mint+metadata and pool creation
-  if (typeof data.transaction1 !== 'string' || typeof data.transaction2 !== 'string') {
-    throw new Error('Missing transaction1 or transaction2 in response');
+  // Deserialize the VersionedTransactions
+  if (!Array.isArray(data.transactions) || data.transactions.length === 0) {
+    throw new Error('No transactions returned from create-token-meteora');
   }
-  // Deserialize both transactions
-  const txBuf1 = Buffer.from(data.transaction1, 'base64');
-  const txBuf2 = Buffer.from(data.transaction2, 'base64');
-  const tx1 = VersionedTransaction.deserialize(txBuf1);
-  const tx2 = VersionedTransaction.deserialize(txBuf2);
-  console.log('Deserialized tx1 version:', tx1.message.version);
-  console.log('Deserialized tx2 version:', tx2.message.version);
+  const txs = data.transactions.map((b64: string, idx: number) => {
+    const buf = Buffer.from(b64, 'base64');
+    const tx = VersionedTransaction.deserialize(buf);
+    console.log(`Deserialized tx ${idx} version:`, tx.message.version);
+    return tx;
+  });
 
   // Sign with wallet (payer) for both
-  tx1.sign([wallet]);
-  console.log('Signed tx1 with wallet');
-  tx2.sign([wallet]);
-  console.log('Signed tx2 with wallet');
+  // Sign all transactions with wallet
+  for (let i = 0; i < txs.length; i++) {
+    txs[i].sign([wallet]);
+    console.log(`Signed tx ${i} with wallet`);
+  }
 
   // Send to test validator
   const connection = new Connection(RPC_ENDPOINT, 'confirmed');
@@ -96,69 +95,44 @@ async function main() {
     await connection.confirmTransaction(signature, 'confirmed');
     console.log('Airdrop confirmed');
   }
-  // Submit tx1
-  const raw1 = tx1.serialize();
-  let sig1: string;
-  try {
-    sig1 = await connection.sendRawTransaction(raw1);
-    console.log('Submitted tx1, signature:', sig1);
-  } catch (err: any) {
-    console.error('Transaction1 simulation failed:', err);
-    if (typeof err.transactionMessage === 'string') {
-      console.error('Transaction1 message:', err.transactionMessage);
-    }
-    if (Array.isArray(err.transactionLogs)) {
-      console.error('Simulation1 logs:');
-      for (const logLine of err.transactionLogs) console.error(logLine);
-    } else if (Array.isArray(err.logs)) {
-      console.error('Simulation1 logs:');
-      for (const logLine of err.logs) console.error(logLine);
-    }
-    process.exit(1);
-  }
-  const conf1 = await connection.confirmTransaction(sig1, 'confirmed');
-  if (conf1.value.err) {
-    console.error('Transaction1 failed:', conf1.value.err);
-    process.exit(1);
-  }
-  console.log('Transaction1 confirmed');
-
-  // Submit tx2
-  const raw2 = tx2.serialize();
-  let sig2: string;
-  try {
-    sig2 = await connection.sendRawTransaction(raw2);
-    console.log('Submitted tx2, signature:', sig2);
-  } catch (err: any) {
-    console.error('Transaction2 simulation failed:', err);
-    // If this is a SendTransactionError, fetch full logs for more detail
-    if (err instanceof SendTransactionError) {
-      try {
-        const fullLogs = await err.getLogs(connection);
-        console.error('Full logs:');
-        for (const logLine of fullLogs) console.error(logLine);
-      } catch (logErr) {
-        console.error('Error fetching full logs:', logErr);
+  // Submit transactions sequentially
+  for (let i = 0; i < txs.length; i++) {
+    const raw = txs[i].serialize();
+    let sig: string;
+    try {
+      sig = await connection.sendRawTransaction(raw);
+      console.log(`Submitted tx ${i}, signature:`, sig);
+    } catch (err: any) {
+      console.error(`Transaction ${i} simulation failed:`, err);
+      if (err instanceof SendTransactionError) {
+        try {
+          const fullLogs = await err.getLogs(connection);
+          console.error('Full logs:');
+          for (const logLine of fullLogs) console.error(logLine);
+        } catch (logErr) {
+          console.error('Error fetching full logs:', logErr);
+        }
       }
+      if (typeof err.transactionMessage === 'string') {
+        console.error('Transaction1 message:', err.transactionMessage);
+      }
+      if (Array.isArray(err.transactionLogs)) {
+        console.error('Simulation1 logs:');
+        for (const logLine of err.transactionLogs) console.error(logLine);
+      } else if (Array.isArray(err.logs)) {
+        console.error('Simulation1 logs:');
+        for (const logLine of err.logs) console.error(logLine);
+      }
+      process.exit(1);
     }
-    if (typeof err.transactionMessage === 'string') {
-      console.error('Transaction2 message:', err.transactionMessage);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+
+    if (conf.value.err) {
+      console.error(`Transaction ${i} failed:`, conf.value.err);
+      process.exit(1);
     }
-    if (Array.isArray(err.transactionLogs)) {
-      console.error('Simulation2 logs:');
-      for (const logLine of err.transactionLogs) console.error(logLine);
-    } else if (Array.isArray(err.logs)) {
-      console.error('Simulation2 logs:');
-      for (const logLine of err.logs) console.error(logLine);
-    }
-    process.exit(1);
+    console.log(`Transaction ${i} confirmed`);
   }
-  const conf2 = await connection.confirmTransaction(sig2, 'confirmed');
-  if (conf2.value.err) {
-    console.error('Transaction2 failed:', conf2.value.err);
-    process.exit(1);
-  }
-  console.log('Transaction2 confirmed');
 
   // Verify on-chain accounts
   const toCheck: Record<string, string> = {
