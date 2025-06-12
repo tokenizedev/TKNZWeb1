@@ -100,11 +100,12 @@ async function main() {
   // First, simulate all transactions to ensure success before sending
   console.log('Simulating all transactions...');
   for (let i = 0; i < txs.length; i++) {
+    const tx = txs[i];
     try {
-      const sim = await connection.simulateTransaction(txs[i]);
+      const sim = await connection.simulateTransaction(tx);
       if (sim.value.err) {
         console.error(`Simulation failed on tx ${i}:`, sim.value.err);
-        if (sim.value.logs) sim.value.logs.forEach(l => console.error(l));
+        if (Array.isArray(sim.value.logs)) sim.value.logs.forEach(l => console.error(l));
         process.exit(1);
       }
       console.log(`Simulation passed for tx ${i}`);
