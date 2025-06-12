@@ -16,13 +16,21 @@ dotenv.config();
 import axios from 'axios';
 import { Keypair, VersionedTransaction, Connection, PublicKey, LAMPORTS_PER_SOL, SendTransactionError } from '@solana/web3.js';
 import { Buffer } from 'buffer';
+// Setup debug output to file and override exit to capture all data
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const debugPath = path.resolve(__dirname, '../logs/create-token-debug.json');
+const debug: any = { startedAt: new Date().toISOString() };
+const origExit = process.exit.bind(process);
+(process as any).exit = (code?: any) => { fs.writeFileSync(debugPath, JSON.stringify(debug, null, 2)); origExit(code); };
 
 async function main() {
   // Configuration from environment
   const FUNCTION_URL = process.env.CREATE_TOKEN_URL ||
     process.env.FUNCTION_URL ||
     'http://localhost:8888/.netlify/functions/create-token-meteora';
-  const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || 'http://localhost:8899';
+  // Allow overriding via RPC_ENDPOINT env var for targeting local or remote clusters
+  const RPC_ENDPOINT = process.env.RPC_ENDPOINT || process.env.SOLANA_RPC_URL || 'http://localhost:8899';
   console.log('Function URL:', FUNCTION_URL);
   console.log('RPC Endpoint:', RPC_ENDPOINT);
 
@@ -58,6 +66,8 @@ async function main() {
     },
   };
   console.log('Request payload:', payload);
+  // record payload for debugging
+  debug.payload = payload;
 
   // Call the create-token endpoint
   const resp = await axios.post(FUNCTION_URL, payload, { headers: { 'Content-Type': 'application/json' } });
@@ -67,6 +77,8 @@ async function main() {
   }
   const data = resp.data;
   console.log('Function response:', data);
+  // record function response
+  debug.functionResponse = { status: resp.status, data };
 
   // Deserialize the VersionedTransactions
   if (!Array.isArray(data.transactions) || data.transactions.length === 0) {
@@ -98,11 +110,15 @@ async function main() {
     console.log('Airdrop confirmed');
   }
   // First, simulate all transactions to ensure success before sending
+  // initialize simulation debug array
+  debug.simulations = [];
   console.log('Simulating all transactions...');
   for (let i = 0; i < txs.length; i++) {
     const tx = txs[i];
     try {
       const sim = await connection.simulateTransaction(tx);
+      // record simulation result
+      debug.simulations.push({ index: i, err: sim.value.err, logs: sim.value.logs });
       if (sim.value.err) {
         console.error(`Simulation failed on tx ${i}:`, sim.value.err);
         if (Array.isArray(sim.value.logs)) sim.value.logs.forEach(l => console.error(l));
@@ -115,6 +131,8 @@ async function main() {
     }
   }
   console.log('All simulations passed. Submitting transactions...');
+  // initialize submission debug array
+  debug.submissions = [];
   // Now, submit transactions sequentially
   for (let i = 0; i < txs.length; i++) {
     const raw = txs[i].serialize();
@@ -146,6 +164,8 @@ async function main() {
       process.exit(1);
     }
     const conf = await connection.confirmTransaction(sig, 'confirmed');
+    // record submission result
+    debug.submissions.push({ index: i, signature: sig, confirm: conf.value });
 
     if (conf.value.err) {
       console.error(`Transaction ${i} failed:`, conf.value.err);
@@ -154,7 +174,8 @@ async function main() {
     console.log(`Transaction ${i} confirmed`);
   }
 
-  // Verify on-chain accounts
+  // verify on-chain accounts
+  debug.accounts = {};
   const toCheck: Record<string, string> = {
     mint: data.mint,
     ata: data.ata,
@@ -165,6 +186,8 @@ async function main() {
     try {
       const info = await connection.getAccountInfo(new PublicKey(addr));
       console.log(`${name} (${addr}) on-chain?`, info ? 'yes' : 'no');
+      // record account info
+      debug.accounts[name] = info ? { lamports: info.lamports, owner: info.owner.toBase58() } : null;
     } catch (e) {
       console.error(`Error fetching ${name}:`, e);
     }
@@ -194,6 +217,8 @@ async function main() {
   try {
     confirmResp = await axios.post(CONFIRM_URL, confirmPayload, { headers: { 'Content-Type': 'application/json' } });
     console.log('Confirm endpoint response:', confirmResp.status, confirmResp.data);
+    // record confirm response
+    debug.confirm = { status: confirmResp.status, data: confirmResp.data };
   } catch (err: any) {
     console.error('Error calling confirm-token-creation endpoint:', err.message || err);
     process.exit(1);
@@ -204,9 +229,14 @@ async function main() {
   try {
     const notifyResp = await axios.post(NOTIFY_URL, { ...confirmPayload, createdAt: confirmResp.data.createdAt }, { headers: { 'Content-Type': 'application/json' } });
     console.log('Notify endpoint response:', notifyResp.status, notifyResp.data);
+    // record notify response
+    debug.notify = { status: notifyResp.status, data: notifyResp.data };
   } catch (err: any) {
     console.error('Error calling notify-token-creation endpoint:', err.message || err);
   }
+  // write collected debug information to file
+  fs.writeFileSync(debugPath, JSON.stringify(debug, null, 2));
+  console.log('Debug info written to', debugPath);
 }
 
 main().catch(err => {
