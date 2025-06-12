@@ -13,16 +13,7 @@ import BN from 'bn.js';
 // Removed CP-AMM integration; DBC will be used instead
 // import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
 import admin from 'firebase-admin';
-import { DynamicBondingCurveClient, deriveDbcPoolAddress, DYNAMIC_BONDING_CURVE_PROGRAM_ID, getSqrtPriceFromPrice, bpsToFeeNumerator, FeeSchedulerMode } from '@meteora-ag/dynamic-bonding-curve-sdk';
-/**
- * Derive the on-chain config PDA for DBC using sequential index.
- */
-function deriveConfigAddress(index: BN): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from('config'), index.toArrayLike(Buffer, 'le', 8)],
-    DYNAMIC_BONDING_CURVE_PROGRAM_ID
-  )[0];
-}
+import { DynamicBondingCurveClient, deriveDbcPoolAddress, getSqrtPriceFromPrice, bpsToFeeNumerator, FeeSchedulerMode } from '@meteora-ag/dynamic-bonding-curve-sdk';
 // Metaplex Token Metadata
 import { createUmi } from '@metaplex-foundation/umi';
 // Removed unused web3JsRpc import; RPC is now configured via defaultPlugins
@@ -223,14 +214,15 @@ export const handler: Handler = async (event) => {
     console.error('Error allocating DBC config index:', err);
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to allocate config index' }) };
   }
-  // Derive the DBC config PDA
-  const configIndexBn = new BN(configIndex);
-  const configPubkey = deriveConfigAddress(configIndexBn);
-  console.log('Derived DBC config address:', configPubkey.toBase58());
+  // Generate a new config keypair for DBC
+  // The config account will be created and signed by this keypair
+  const configKeypair = Keypair.generate();
+  const configPubkey = configKeypair.publicKey;
+  console.log('Generated DBC config keypair with address:', configPubkey.toBase58());
   
     // Prepare Solana connection and keys
-    // Allow overriding via SOLANA_RPC_URL or RPC_ENDPOINT env vars
-    const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || process.env.RPC_ENDPOINT || 'https://mainnet.helius-rpc.com/?api-key=5e4edb76-36ed-4740-942d-7843adcc1e22';
+    // Allow overriding via RPC_ENDPOINT or SOLANA_RPC_URL env vars (RPC_ENDPOINT takes precedence for local testing)
+    const RPC_ENDPOINT = process.env.RPC_ENDPOINT || process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=5e4edb76-36ed-4740-942d-7843adcc1e22';
     if (!RPC_ENDPOINT) {
       console.error('Missing RPC_ENDPOINT');
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfiguration: RPC_ENDPOINT' }) };
@@ -367,52 +359,46 @@ export const handler: Handler = async (event) => {
     // Instantiate the DBC client
     const dbcClient = new DynamicBondingCurveClient(connection, 'confirmed');
     // Merge default curve parameters (based on pump.fun) with any user overrides
+    // Mimic pump.fun graduation curve defaults: static base fee of 0.30% and no volatility fee by default
     const defaultCurveConfig = {
-      // Quote mint is SOL
-      quoteMint: NATIVE_MINT.toBase58(),
-      // Fees in BPS: 0.30% base, 0.10% dynamic
+      // Fees configuration
       poolFees: {
         baseFee: {
+          // 0.30% base fee in bps
           cliffFeeNumerator: bpsToFeeNumerator(30),
-          numberOfPeriod: 1,
+          numberOfPeriod: 0,
           periodFrequency: new BN(0),
           reductionFactor: new BN(0),
-          feeSchedulerMode: FeeSchedulerMode.Constant
+          feeSchedulerMode: FeeSchedulerMode.Linear,
         },
-        dynamicFee: 10
+        // No dynamic volatility fee by default
+        dynamicFee: null,
       },
-      // Token update authority: 0 = Mutable, 1 = Immutable
-      tokenUpdateAuthority: 0,
       // Collect only quote fees
       collectFeeMode: 0,
       // Activate immediately via timestamp
       activationType: 1,
-      activationValue: Math.floor(Date.now() / 1000),
       // Migrate only after large volume (threshold = 100x initial deposit)
       migrationQuoteThreshold: new BN(depositLamports).mul(new BN(100)),
       migrationOption: 0,
+      // Token settings: standard SPL token with specified decimals
+      tokenType: 0,
+      tokenDecimal: decimals,
       // LP splits: 5% to platform, 95% to creator
       partnerLpPercentage: 5,
       partnerLockedLpPercentage: 0,
       creatorLpPercentage: 95,
       creatorLockedLpPercentage: 0,
-      // Migration fee option: 1.00% fixed
+      // Migration fee option: fixed 100 bps (1.00%)
       migrationFeeOption: 2,
-      // Migration fee parameters matching option (percentage, e.g., 1 for 1%)
       migrationFee: { feePercentage: 1, creatorFeePercentage: 0 },
-      // Standard SPL token, 9 decimals
-      tokenType: 0,
-      tokenDecimal: decimals,
-      // Start sqrt price = as Q64 fixed-point BN
+      // Start sqrt price = as Q64 fixed-point BN (SOL per token)
       sqrtStartPrice: getSqrtPriceFromPrice(
         initialPrice.toString(),
         decimals,
-        9 // SOL decimals
+        9
       ),
-      // Fee claimer and leftover go to creator by default (overridden below)
-      feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
-      leftoverReceiver: userPubkey.toBase58(),
-      // Default locked vesting: no vesting (fields required by SDK)
+      // Default locked vesting: no vesting
       lockedVesting: {
         amountPerPeriod: new BN(0),
         cliffDurationFromMigrationTime: new BN(0),
@@ -420,6 +406,14 @@ export const handler: Handler = async (event) => {
         numberOfPeriod: new BN(0),
         cliffUnlockAmount: new BN(0),
       },
+      // Other config parameters
+      creatorTradingFeePercentage: 0,
+      // Optional fixed token supply before and after migration (null = no fixed supply)
+      tokenSupply: null,
+      tokenUpdateAuthority: 0,
+      // Padding for future use
+      padding0: [],
+      padding1: [],
     };
     // Merge default curve parameters with any user overrides
     const curveConfigOverrides = portalParams?.curveConfig ?? {};
@@ -495,11 +489,18 @@ export const handler: Handler = async (event) => {
       const { blockhash } = await connection.getLatestBlockhash();
       const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
       const tx = new VersionedTransaction(msg);
+      // Partially sign the config creation transaction with server-held config keypair
+      try {
+        tx.sign([configKeypair]);
+      } catch {}
       if (Buffer.from(tx.serialize()).length > MAX_TX_BYTES) {
         // Remove last instruction and finalize the chunk
         const lastIx = chunkIxs.pop()!;
         const prevMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
         const prevTx = new VersionedTransaction(prevMsg);
+        try {
+          prevTx.sign([configKeypair]);
+        } catch {}
         poolTxs.push(Buffer.from(prevTx.serialize()).toString('base64'));
         // Start new chunk with the oversized instruction
         chunkIxs = [lastIx];
@@ -509,6 +510,10 @@ export const handler: Handler = async (event) => {
       const { blockhash } = await connection.getLatestBlockhash();
       const msgLast = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
       const lastTx = new VersionedTransaction(msgLast);
+      // Partially sign with config keypair
+      try {
+        lastTx.sign([configKeypair]);
+      } catch {}
       poolTxs.push(Buffer.from(lastTx.serialize()).toString('base64'));
     }
     return {
