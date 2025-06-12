@@ -13,7 +13,7 @@ import BN from 'bn.js';
 // Removed CP-AMM integration; DBC will be used instead
 // import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
 import admin from 'firebase-admin';
-import { DynamicBondingCurveClient, deriveDbcPoolAddress, getSqrtPriceFromPrice, bpsToFeeNumerator, FeeSchedulerMode } from '@meteora-ag/dynamic-bonding-curve-sdk';
+import { DynamicBondingCurveClient, deriveDbcPoolAddress, getSqrtPriceFromPrice, bpsToFeeNumerator, FeeSchedulerMode, MAX_SQRT_PRICE } from '@meteora-ag/dynamic-bonding-curve-sdk';
 // Metaplex Token Metadata
 import { createUmi } from '@metaplex-foundation/umi';
 // Removed unused web3JsRpc import; RPC is now configured via defaultPlugins
@@ -418,12 +418,12 @@ export const handler: Handler = async (event) => {
     // Merge default curve parameters with any user overrides
     const curveConfigOverrides = portalParams?.curveConfig ?? {};
     const mergedCurveConfig: any = { ...defaultCurveConfig, ...curveConfigOverrides };
-    // Inject a default curve segment if none provided: a single point just above start price with initial liquidity
+    // Inject a default curve segment if none provided: full-range constant-product from start to max price
     if (!mergedCurveConfig.curve || !Array.isArray(mergedCurveConfig.curve) || mergedCurveConfig.curve.length === 0) {
-      const eps = new BN(1);
       mergedCurveConfig.curve = [
         {
-          sqrtPrice: mergedCurveConfig.sqrtStartPrice.add(eps),
+          // Use MAX_SQRT_PRICE to allow sufficient liquidity capacity
+          sqrtPrice: MAX_SQRT_PRICE,
           liquidity: poolSupplyRaw,
         },
       ];
