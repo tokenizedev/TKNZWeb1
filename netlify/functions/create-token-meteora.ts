@@ -383,12 +383,22 @@ export const handler: Handler = async (event) => {
     console.log('DBC defaultCurveConfig:', JSON.stringify(defaultCurveConfig, null, 2));
     console.log('DBC overrides:', JSON.stringify(curveConfigOverrides, null, 2));
     console.log('Merged DBC configParam:', JSON.stringify(mergedCurveConfig, null, 2));
+    // Determine quote mint: allow override via portalParams.quoteMint
+    const quoteMintArg = portalParams?.quoteMint || NATIVE_MINT.toBase58();
+    // If using Token-2022 path, native SOL (NATIVE_MINT) cannot be used as quoteMint
+    if (mergedCurveConfig.tokenType === 1 && quoteMintArg === NATIVE_MINT.toBase58()) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Token-2022 path does not support native SOL as quoteMint; please specify a SPL token mint (e.g. USDC) in portalParams.quoteMint' })
+      };
+    }
     // Create config, pool, and initial buy in one step
     const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
       config: configPubkey.toBase58(),
       feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
       leftoverReceiver: userPubkey.toBase58(),
-      quoteMint: NATIVE_MINT.toBase58(),
+      quoteMint: quoteMintArg,
       payer: userPubkey.toBase58(),
       // Spread merged curve config (includes generated 'curve' and lockedVesting)
       ...mergedCurveConfig,
