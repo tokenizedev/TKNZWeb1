@@ -386,50 +386,83 @@ export const handler: Handler = async (event) => {
     // Determine quote mint: allow override via portalParams.quoteMint
     const quoteMintArg = portalParams?.quoteMint || NATIVE_MINT.toBase58();
     // If using Token-2022 path, native SOL (NATIVE_MINT) cannot be used as quoteMint
+    // if (mergedCurveConfig.tokenType === 1 && quoteMintArg === NATIVE_MINT.toBase58()) {
+    //   return {
+    //     statusCode: 400,
+    //     headers,
+    //     body: JSON.stringify({ error: 'Token-2022 path does not support native SOL as quoteMint; please specify a SPL token mint (e.g. USDC) in portalParams.quoteMint' })
+    //   };
+    // }
+    // Build pool instructions, splitting config+pool and optional initial buy.
+    let poolIxs: TransactionInstruction[];
+    // If depositing native SOL with Token-2022 path, skip initial buy here (swap in client)
     if (mergedCurveConfig.tokenType === 1 && quoteMintArg === NATIVE_MINT.toBase58()) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'Token-2022 path does not support native SOL as quoteMint; please specify a SPL token mint (e.g. USDC) in portalParams.quoteMint' })
-      };
+      // Create config and pool (no buy)
+      const poolTxObj = await dbcClient.pool.createConfigAndPool({
+        config: configPubkey.toBase58(),
+        feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
+        leftoverReceiver: userPubkey.toBase58(),
+        quoteMint: quoteMintArg,
+        payer: userPubkey.toBase58(),
+        ...mergedCurveConfig,
+        tokenUpdateAuthority: mergedCurveConfig.tokenUpdateAuthority,
+        createPoolParam: {
+          baseMint: mintPubkey,
+          poolCreator: TREASURY_PUBKEY ?? userPubkey,
+          name: token.name,
+          symbol: token.ticker,
+          uri: tokenMetadata.uri,
+        },
+      });
+      poolIxs = poolTxObj.instructions;
+      // Derive DBC pool address for client-side swap
+      var poolAddress = deriveDbcPoolAddress(
+        new PublicKey(quoteMintArg),
+        mintPubkey,
+        configPubkey
+      );
+      console.log('Derived DBC pool address:', poolAddress.toBase58());
+      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'deployer', walletAddress);
+      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'mint', mintPubkey.toBase58());
+    } else {
+      // Create config, pool, and initial buy in one step
+      const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
+        config: configPubkey.toBase58(),
+        feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
+        leftoverReceiver: userPubkey.toBase58(),
+        quoteMint: quoteMintArg,
+        payer: userPubkey.toBase58(),
+        ...mergedCurveConfig,
+        tokenUpdateAuthority: mergedCurveConfig.tokenUpdateAuthority,
+        createPoolParam: {
+          baseMint: mintPubkey,
+          poolCreator: TREASURY_PUBKEY ?? userPubkey,
+          name: token.name,
+          symbol: token.ticker,
+          uri: tokenMetadata.uri,
+        },
+        swapBuyParam: {
+          buyAmount: new BN(depositLamports),
+          minimumAmountOut: new BN(0),
+          referralTokenAccount: null,
+        },
+      });
+      // Derive DBC pool address
+      var poolAddress = deriveDbcPoolAddress(
+        new PublicKey(quoteMintArg),
+        mintPubkey,
+        configPubkey
+      );
+      console.log('Derived DBC pool address:', poolAddress.toBase58());
+      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'deployer', walletAddress);
+      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'mint', mintPubkey.toBase58());
+      // Combine instructions: config+pool+swap
+      poolIxs = [
+        ...createConfigTx.instructions,
+        ...createPoolTx.instructions,
+        ...swapBuyTx.instructions,
+      ];
     }
-    // Create config, pool, and initial buy in one step
-    const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
-      config: configPubkey.toBase58(),
-      feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
-      leftoverReceiver: userPubkey.toBase58(),
-      quoteMint: quoteMintArg,
-      payer: userPubkey.toBase58(),
-      // Spread merged curve config (includes generated 'curve' and lockedVesting)
-      ...mergedCurveConfig,
-      // Explicitly set tokenUpdateAuthority
-      tokenUpdateAuthority: mergedCurveConfig.tokenUpdateAuthority,
-      // Parameters for creating the pool
-      createPoolParam: {
-        baseMint: mintPubkey,
-        poolCreator: TREASURY_PUBKEY ?? userPubkey,
-        name: token.name,
-        symbol: token.ticker,
-        uri: tokenMetadata.uri,
-      },
-      // Parameters for initial buy
-      swapBuyParam: {
-        buyAmount: new BN(depositLamports),
-        minimumAmountOut: new BN(0),
-        referralTokenAccount: null,
-      },
-    });
-    // Derive DBC pool address and store mapping
-    const poolAddress = deriveDbcPoolAddress(
-      NATIVE_MINT,
-      mintPubkey,
-      configPubkey
-    );
-    console.log('Derived DBC pool address:', poolAddress.toBase58());
-    const poolKey = `dbcPool:${poolAddress.toBase58()}`;
-    await redis.hset(poolKey, 'deployer', walletAddress);
-    await redis.hset(poolKey, 'mint', mintPubkey.toBase58());
-    // Build and serialize 2 transactions: mint and pool setup (config+pool+swap)
     // TX0: mint (create account, initialize mint, mintTo)
     const { blockhash: bh0 } = await connection.getLatestBlockhash();
     const msg0 = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh0, instructions: instructionsMint }).compileToV0Message();
@@ -438,11 +471,7 @@ export const handler: Handler = async (event) => {
     const serialized0 = Buffer.from(tx0.serialize()).toString('base64');
     // TX1: pool setup (config + pool + swap) -- skip metadata to avoid metadata program errors
     // TX1+: Pool setup (config, pool creation, swap), split to fit transaction size
-    const poolIxs = [
-      ...createConfigTx.instructions,
-      ...createPoolTx.instructions,
-      ...swapBuyTx.instructions,
-    ];
+    
     const MAX_TX_BYTES = 1232;
     const poolTxs: string[] = [];
     let chunkIxs: TransactionInstruction[] = [];
