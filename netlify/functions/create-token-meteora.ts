@@ -306,7 +306,7 @@ export const handler: Handler = async (event) => {
     const feeUi = portalParams?.priorityFee ?? 0;
     const feeLamports = Math.round(feeUi * LAMPORTS_PER_SOL);
     const depositLamports = Math.round(solDepositUi * LAMPORTS_PER_SOL);
-    // 5) Create DBC config, pool, and initial buy via Meteora DBC SDK
+    // 5) Create DBC config and pool via Meteora DBC SDK
     // Instantiate the DBC client
     const dbcClient = new DynamicBondingCurveClient(connection, 'confirmed');
     // Merge default curve parameters (based on pump.fun) with any user overrides
@@ -393,125 +393,69 @@ export const handler: Handler = async (event) => {
     //     body: JSON.stringify({ error: 'Token-2022 path does not support native SOL as quoteMint; please specify a SPL token mint (e.g. USDC) in portalParams.quoteMint' })
     //   };
     // }
-    // Build pool instructions, splitting config+pool and optional initial buy.
-    let poolIxs: TransactionInstruction[];
-    // If depositing native SOL with Token-2022 path, skip initial buy here (swap in client)
-    if (mergedCurveConfig.tokenType === 1 && quoteMintArg === NATIVE_MINT.toBase58()) {
-      // Create config and pool (no buy)
-      const poolTxObj = await dbcClient.pool.createConfigAndPool({
-        config: configPubkey.toBase58(),
-        feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
-        leftoverReceiver: userPubkey.toBase58(),
-        quoteMint: quoteMintArg,
-        payer: userPubkey.toBase58(),
-        ...mergedCurveConfig,
-        tokenUpdateAuthority: mergedCurveConfig.tokenUpdateAuthority,
-        createPoolParam: {
-          baseMint: mintPubkey,
-          poolCreator: TREASURY_PUBKEY ?? userPubkey,
-          name: token.name,
-          symbol: token.ticker,
-          uri: tokenMetadata.uri,
-        },
-      });
-      poolIxs = poolTxObj.instructions;
-      // Derive DBC pool address for client-side swap
-      var poolAddress = deriveDbcPoolAddress(
-        new PublicKey(quoteMintArg),
-        mintPubkey,
-        configPubkey
-      );
-      console.log('Derived DBC pool address:', poolAddress.toBase58());
-      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'deployer', walletAddress);
-      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'mint', mintPubkey.toBase58());
-    } else {
-      // Create config, pool, and initial buy in one step
-      const { createConfigTx, createPoolTx, swapBuyTx } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
-        config: configPubkey.toBase58(),
-        feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
-        leftoverReceiver: userPubkey.toBase58(),
-        quoteMint: quoteMintArg,
-        payer: userPubkey.toBase58(),
-        ...mergedCurveConfig,
-        tokenUpdateAuthority: mergedCurveConfig.tokenUpdateAuthority,
-        createPoolParam: {
-          baseMint: mintPubkey,
-          poolCreator: TREASURY_PUBKEY ?? userPubkey,
-          name: token.name,
-          symbol: token.ticker,
-          uri: tokenMetadata.uri,
-        },
-        swapBuyParam: {
-          buyAmount: new BN(depositLamports),
-          minimumAmountOut: new BN(0),
-          referralTokenAccount: null,
-        },
-      });
-      // Derive DBC pool address
-      var poolAddress = deriveDbcPoolAddress(
-        new PublicKey(quoteMintArg),
-        mintPubkey,
-        configPubkey
-      );
-      console.log('Derived DBC pool address:', poolAddress.toBase58());
-      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'deployer', walletAddress);
-      await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'mint', mintPubkey.toBase58());
-      // Combine instructions: config+pool+swap
-      poolIxs = [
-        ...createConfigTx.instructions,
-        ...createPoolTx.instructions,
-        ...swapBuyTx.instructions,
-      ];
-    }
-    // TX0: mint (create account, initialize mint, mintTo)
-    const { blockhash: bh0 } = await connection.getLatestBlockhash();
-    const msg0 = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: bh0, instructions: instructionsMint }).compileToV0Message();
-    const tx0 = new VersionedTransaction(msg0);
-    tx0.sign([mintKeypair]);
-    const serialized0 = Buffer.from(tx0.serialize()).toString('base64');
-    // TX1: pool setup (config + pool + swap) -- skip metadata to avoid metadata program errors
-    // TX1+: Pool setup (config, pool creation, swap), split to fit transaction size
-    
-    const MAX_TX_BYTES = 1232;
-    const poolTxs: string[] = [];
-    let chunkIxs: TransactionInstruction[] = [];
-    for (const ix of poolIxs) {
-      chunkIxs.push(ix);
+    // 5) Create DBC config, pool, and prepare initial buy via DBC SDK
+    // Use createConfigAndPoolWithFirstBuy but defer the actual swap on client-side
+    const { createConfigTx, createPoolTx /*, swapBuyTx */ } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
+      config: configPubkey.toBase58(),
+      feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
+      leftoverReceiver: userPubkey.toBase58(),
+      quoteMint: quoteMintArg,
+      payer: userPubkey.toBase58(),
+      ...mergedCurveConfig,
+      createPoolParam: {
+        baseMint: mintPubkey,
+        poolCreator: TREASURY_PUBKEY ?? userPubkey,
+        name: token.name,
+        symbol: token.ticker,
+        uri: tokenMetadata.uri,
+      },
+      swapBuyParam: {
+        buyAmount: new BN(depositLamports),
+        minimumAmountOut: new BN(0),
+        referralTokenAccount: null,
+      },
+    });
+    // Derive DBC pool address and store mapping
+    const poolAddress = deriveDbcPoolAddress(
+      new PublicKey(quoteMintArg),
+      mintPubkey,
+      configPubkey
+    );
+    console.log('Derived DBC pool address:', poolAddress.toBase58());
+    await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'deployer', walletAddress);
+    await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'mint', mintPubkey.toBase58());
+    // Serialize transactions: mint (if SPL), config creation, and pool initialization
+    const serializedTxs: string[] = [];
+    const buildAndSign = async (
+      instructions: TransactionInstruction[],
+      signers: Keypair[]
+    ) => {
       const { blockhash } = await connection.getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
-      const tx = new VersionedTransaction(msg);
-      // Partially sign the config creation transaction with server-held config keypair
-      try {
-        tx.sign([configKeypair]);
-      } catch {}
-      if (Buffer.from(tx.serialize()).length > MAX_TX_BYTES) {
-        // Remove last instruction and finalize the chunk
-        const lastIx = chunkIxs.pop()!;
-        const prevMsg = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
-        const prevTx = new VersionedTransaction(prevMsg);
-        try {
-          prevTx.sign([configKeypair]);
-        } catch {}
-        poolTxs.push(Buffer.from(prevTx.serialize()).toString('base64'));
-        // Start new chunk with the oversized instruction
-        chunkIxs = [lastIx];
-      }
+      const message = new TransactionMessage({
+        payerKey: userPubkey,
+        recentBlockhash: blockhash,
+        instructions,
+      }).compileToV0Message();
+      const vtx = new VersionedTransaction(message);
+      try { vtx.sign(signers); } catch {}
+      return Buffer.from(vtx.serialize()).toString('base64');
+    };
+    // For SPL pools: include minting transaction
+    if (mergedCurveConfig.tokenType === 0) {
+      serializedTxs.push(await buildAndSign(instructionsMint, [mintKeypair]));
     }
-    if (chunkIxs.length > 0) {
-      const { blockhash } = await connection.getLatestBlockhash();
-      const msgLast = new TransactionMessage({ payerKey: userPubkey, recentBlockhash: blockhash, instructions: chunkIxs }).compileToV0Message();
-      const lastTx = new VersionedTransaction(msgLast);
-      // Partially sign with config keypair
-      try {
-        lastTx.sign([configKeypair]);
-      } catch {}
-      poolTxs.push(Buffer.from(lastTx.serialize()).toString('base64'));
-    }
+    // Config creation transaction (signed by config key)
+    serializedTxs.push(await buildAndSign(createConfigTx.instructions, [configKeypair]));
+    // Pool initialization transaction (signed by config key, and mint key for Token-2022)
+    const poolSigners = mergedCurveConfig.tokenType === 1
+      ? [mintKeypair, configKeypair]
+      : [configKeypair];
+    serializedTxs.push(await buildAndSign(createPoolTx.instructions, poolSigners));
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        transactions: [serialized0, ...poolTxs],
+        transactions: serializedTxs,
         mint: mintPubkey.toBase58(),
         ata: ata.toBase58(),
         metadataUri: tokenMetadata.uri,
@@ -521,9 +465,9 @@ export const handler: Handler = async (event) => {
         initialSupply,
         initialSupplyRaw: initialSupplyRaw.toString(),
         depositSol: solDepositUi,
-        depositLamports: depositLamports,
+        depositLamports,
         feeSol: feeUi,
-        feeLamports: feeLamports,
+        feeLamports,
         isLockLiquidity,
       }),
     };
