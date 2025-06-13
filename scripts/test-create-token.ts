@@ -14,8 +14,11 @@ dotenv.config();
  *   - Environment vars RPC_ENDPOINT and CP_AMM_STATIC_CONFIG set for Netlify Dev
  */
 import axios from 'axios';
-import { Keypair, VersionedTransaction, Connection, PublicKey, LAMPORTS_PER_SOL, SendTransactionError } from '@solana/web3.js';
+import { Keypair, VersionedTransaction, Connection, PublicKey, LAMPORTS_PER_SOL, SendTransactionError, SystemProgram, Transaction } from '@solana/web3.js';
+import { getOrCreateAssociatedTokenAccount, createSyncNativeInstruction, createCloseAccountInstruction, TOKEN_PROGRAM_ID, NATIVE_MINT } from '@solana/spl-token';
+import BN from 'bn.js';
 import { Buffer } from 'buffer';
+import { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk';
 // Setup debug output to file and override exit to capture all data
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -166,6 +169,67 @@ async function main() {
       process.exit(1);
     }
     console.log(`Transaction ${i} confirmed`);
+  }
+
+  // If depositing SOL on Token-2022 path, wrap SOL and perform DBC swap
+  const depositLamports = data.depositLamports;
+  if (depositLamports > 0) {
+    console.log(`Wrapping ${depositLamports} lamports of SOL into WSOL ATA...`);
+    const wsolAta = await getOrCreateAssociatedTokenAccount(
+      connection,
+      wallet,
+      NATIVE_MINT,
+      wallet.publicKey,
+      true
+    );
+    const wrapTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: wsolAta.address,
+        lamports: depositLamports,
+      }),
+      createSyncNativeInstruction(wsolAta.address)
+    );
+    wrapTx.feePayer = wallet.publicKey;
+    const { blockhash: bhWrap } = await connection.getLatestBlockhash('finalized');
+    wrapTx.recentBlockhash = bhWrap;
+    wrapTx.sign(wallet);
+    const sigWrap = await connection.sendRawTransaction(wrapTx.serialize());
+    await connection.confirmTransaction(sigWrap, 'confirmed');
+    console.log('Wrapped SOL tx:', sigWrap);
+
+    console.log('Performing DBC swap initial buy...');
+    const dbcClient = new DynamicBondingCurveClient(connection, 'confirmed');
+    const swapTx = await dbcClient.pool.swap({
+      payer: wallet.publicKey.toBase58(),
+      pool: data.pool,
+      inputTokenMint: NATIVE_MINT.toBase58(),
+      outputTokenMint: data.mint,
+      amountIn: new BN(depositLamports),
+      minimumAmountOut: new BN(0),
+      referralTokenAccount: null,
+    });
+    swapTx.feePayer = wallet.publicKey;
+    const { blockhash: bhSwap } = await connection.getLatestBlockhash('finalized');
+    swapTx.recentBlockhash = bhSwap;
+    swapTx.sign(wallet);
+    const sigSwap = await connection.sendRawTransaction(swapTx.serialize());
+    await connection.confirmTransaction(sigSwap, 'confirmed');
+    console.log('Swap tx signature:', sigSwap);
+
+    console.log('Unwrapping leftover WSOL back to SOL...');
+    const unwrapTx = new Transaction().add(
+      createCloseAccountInstruction(wsolAta.address, wallet.publicKey, wallet.publicKey, [])
+    );
+    unwrapTx.feePayer = wallet.publicKey;
+    const { blockhash: bhUnwrap } = await connection.getLatestBlockhash('finalized');
+    unwrapTx.recentBlockhash = bhUnwrap;
+    unwrapTx.sign(wallet);
+    const sigUnwrap = await connection.sendRawTransaction(unwrapTx.serialize());
+    await connection.confirmTransaction(sigUnwrap, 'confirmed');
+    console.log('Unwrapped WSOL tx:', sigUnwrap);
+
+    debug.swap = { wrap: sigWrap, swap: sigSwap, unwrap: sigUnwrap };
   }
 
   // verify on-chain accounts
