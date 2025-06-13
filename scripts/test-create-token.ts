@@ -106,34 +106,33 @@ async function main() {
   // Send to test validator
   const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
-  // First, simulate all transactions to ensure success before sending
-  // initialize simulation debug array
+  // Optionally simulate transactions (warnings only; proceed regardless)
   debug.simulations = [];
-  console.log('Simulating all transactions...');
+  console.log('Simulating transactions (warnings only)...');
   for (let i = 0; i < txs.length; i++) {
     const tx = txs[i];
     try {
       const sim = await connection.simulateTransaction(tx);
-      // record simulation result
-      debug.simulations.push({ index: i, err: sim.value.err, logs: sim.value.logs });
+      debug.simulations.push({ index: i, result: sim.value });
       if (sim.value.err) {
-        console.error(`Simulation failed on tx ${i}:`, sim.value.err);
-        if (Array.isArray(sim.value.logs)) sim.value.logs.forEach(l => console.error(l));
-        process.exit(1);
+        console.warn(`Simulation warning for tx ${i}:`, sim.value.err);
+        if (Array.isArray(sim.value.logs)) sim.value.logs.forEach(l => console.warn(l));
+      } else {
+        console.log(`Simulation passed for tx ${i}`);
       }
-      console.log(`Simulation passed for tx ${i}`);
     } catch (simErr: any) {
-      console.error(`Error simulating tx ${i}:`, simErr);
-      process.exit(1);
+      console.warn(`Simulation exception for tx ${i}:`, simErr.message || simErr);
+      debug.simulations.push({ index: i, error: simErr.message || simErr });
     }
   }
-  console.log('All simulations passed. Submitting transactions...');
+  console.log('Submitting transactions...');
   // initialize submission debug array
   debug.submissions = [];
   // Now, submit transactions sequentially
   for (let i = 0; i < txs.length; i++) {
     const raw = txs[i].serialize();
     let sig: string;
+    
     try {
       sig = await connection.sendRawTransaction(raw);
       console.log(`Submitted tx ${i}, signature:`, sig);
@@ -142,33 +141,26 @@ async function main() {
       if (err instanceof SendTransactionError) {
         try {
           const fullLogs = await err.getLogs(connection);
-          console.error('Full logs:');
-          for (const logLine of fullLogs) console.error(logLine);
-        } catch (logErr) {
-          console.error('Error fetching full logs:', logErr);
+          console.error('On-chain simulation logs:');
+          fullLogs.forEach(log => console.error(log));
+        } catch (logErr: any) {
+          console.error('Error fetching on-chain logs:', logErr);
         }
       }
-      if (typeof err.transactionMessage === 'string') {
-        console.error(`Transaction ${i} message:`, err.transactionMessage);
-      }
-      if (Array.isArray(err.transactionLogs)) {
-        console.error(`Simulation ${i} logs:`);
-        for (const logLine of err.transactionLogs) console.error(logLine);
-      } else if (Array.isArray(err.logs)) {
-        console.error(`Simulation ${i} logs:`);
-        for (const logLine of err.logs) console.error(logLine);
-      }
       process.exit(1);
     }
-    const conf = await connection.confirmTransaction(sig, 'confirmed');
-    // record submission result
-    debug.submissions.push({ index: i, signature: sig, confirm: conf.value });
 
-    if (conf.value.err) {
-      console.error(`Transaction ${i} failed:`, conf.value.err);
+    try {
+      const conf = await connection.confirmTransaction(sig, 'confirmed');
+      console.log(`Transaction ${i} confirmed:`, sig);
+      if (conf.value.err) {
+        console.error(`Transaction ${i} on-chain error:`, conf.value.err);
+        process.exit(1);
+      }
+    } catch (err: any) {
+      console.error(`Transaction ${i} confirmation failed:`, err);
       process.exit(1);
     }
-    console.log(`Transaction ${i} confirmed`);
   }
 
   // If depositing SOL on Token-2022 path, wrap SOL and perform DBC swap
