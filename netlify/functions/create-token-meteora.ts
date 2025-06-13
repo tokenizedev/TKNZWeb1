@@ -14,11 +14,7 @@ import BN from 'bn.js';
 // import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
 import admin from 'firebase-admin';
 import { DynamicBondingCurveClient, deriveDbcPoolAddress, getSqrtPriceFromPrice, bpsToFeeNumerator, FeeSchedulerMode, MAX_SQRT_PRICE } from '@meteora-ag/dynamic-bonding-curve-sdk';
-// Metaplex Token Metadata
-import { createUmi } from '@metaplex-foundation/umi';
-// Removed unused web3JsRpc import; RPC is now configured via defaultPlugins
-import { defaultPlugins } from '@metaplex-foundation/umi-bundle-defaults';
-import { mplTokenMetadata, createMetadataAccountV3, DataV2 } from '@metaplex-foundation/mpl-token-metadata';
+// Off-chain metadata upload only; on-chain metadata is created by the DBC program CPI
 import dotenv from 'dotenv';
 dotenv.config();
 import { Redis } from '@upstash/redis';
@@ -259,53 +255,8 @@ export const handler: Handler = async (event) => {
       : Math.floor(solDepositUi / initialPrice);
     const poolSupplyRaw = new BN(poolSupplyUnits).mul(multiplier);
     console.log('RPC_ENDPOINT', RPC_ENDPOINT);
-    // Build separate instruction sets: mint+metadata and pool+deposit
+    // Build separate instruction set for minting only (pool setup via DBC SDK handles on-chain metadata)
     const instructionsMint: TransactionInstruction[] = [];
-    const instructionsPool: TransactionInstruction[] = [];
-    // 0) Create on-chain metadata account for the new mint (metadata instructions for second TX)
-    let metadataIxs: TransactionInstruction[] = [];
-    {
-      const umi = createUmi()
-        .use(defaultPlugins(connection))
-        .use(mplTokenMetadata());
-      const metadataData: DataV2 = {
-        name: token.name.substring(0, 32),
-        symbol: token.ticker.substring(0, 10),
-        uri: tokenMetadata.uri,
-        sellerFeeBasisPoints: 0,
-        creators: null,
-        collection: null,
-        uses: null,
-      };
-      const metadataBuilder = createMetadataAccountV3(umi, {
-        mint: mintPubkey,
-        mintAuthority: userPubkey,
-        payer: userPubkey,
-        updateAuthority: userPubkey,
-        data: metadataData,
-        isMutable: true,
-        collectionDetails: null,
-      });
-      const umiIxs = metadataBuilder.getInstructions();
-      metadataIxs = umiIxs.map((ix) => {
-        const keys = ix.keys.map(({ pubkey, isSigner, isWritable }) => {
-          const addr = Array.isArray(pubkey) ? pubkey[0] : pubkey;
-          return {
-            pubkey: typeof addr === 'string' ? new PublicKey(addr) : addr,
-            isSigner,
-            isWritable,
-          };
-        });
-        const pidAddr = Array.isArray(ix.programId) ? ix.programId[0] : ix.programId;
-        const programIdKey = typeof pidAddr === 'string' ? new PublicKey(pidAddr) : pidAddr;
-        return new TransactionInstruction({
-          keys,
-          programId: programIdKey,
-          data: ix.data,
-        });
-      });
-      instructionsPool.push(...metadataIxs);
-    }
     // 1) Create mint account
     instructionsMint.push(
       SystemProgram.createAccount({
@@ -380,9 +331,10 @@ export const handler: Handler = async (event) => {
       activationType: 1,
       // Migrate threshold: minimal threshold (1 lamport) to ensure branch logic passes
       migrationQuoteThreshold: new BN(1),
-      migrationOption: 0,
-      // Token settings: standard SPL token with specified decimals
-      tokenType: 0,
+      // 0: DAMM V1, 1: DAMM V2
+      migrationOption: 1,
+      // Token settings: use Token-2022 mint (enables fungible on-chain metadata)
+      tokenType: 1,
       tokenDecimal: decimals,
       // LP splits: 5% to platform, 95% to creator
       partnerLpPercentage: 5,
