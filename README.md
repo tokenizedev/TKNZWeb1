@@ -194,6 +194,34 @@ Status: `200 OK`
 > }
 > ```
 
+## Token Creation Flow
+
+```mermaid
+sequenceDiagram
+  participant UX as User/UI
+  participant Ext as Extension
+  participant CTM as create-token-meteora Function
+  participant RPC as Solana RPC
+  participant CTC as confirm-token-creation Function
+  participant NTC as notify-token-creation Function
+  participant Redis as Redis
+  participant Telegram as Telegram Bot
+
+  UX->>Ext: Click "CREATE COIN"
+  Ext->>CTM: POST /create-token-meteora + token params
+  CTM-->>Ext: return { tx1, tx2, mint, ata, metadataUri, pool, ... }
+  Ext->>RPC: sendRawTransaction(tx1); confirm
+  Ext->>RPC: sendRawTransaction(tx2); confirm
+  Ext->>CTC: POST /confirm-token-creation + token data
+  CTC->>Redis: zadd leaderboard:v2, hset token:v2:<mint>
+  CTC-->>Ext: success
+  Ext->>NTC: POST /notify-token-creation + token data
+  NTC->>Redis: zscore leaderboard:v2, zscore notifications:v2
+  NTC->>Telegram: sendMessage notification
+  NTC->>Redis: zadd notifications:v2
+  NTC-->>Ext: success
+```
+
 ## Roadmap
 - [ ] Official Chrome Web Store release
 - [ ] TikTok & other social platform optimizations

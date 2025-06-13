@@ -13,9 +13,9 @@ const partners = [
     link: 'https://x.com/buidldao_'
   },
   {
-    name: 'Pump.fun',
-    logo: '/assets/pumpfun.png',
-    link: 'https://pump.fun'
+    name: 'Meteora',
+    logo: '/assets/meteora.png',
+    link: 'https://www.meteora.ag/'
   },
   {
     name: 'Solana',
