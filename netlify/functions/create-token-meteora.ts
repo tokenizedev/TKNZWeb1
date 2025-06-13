@@ -8,7 +8,7 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
-import { Buffer, Blob } from 'buffer';
+import { Buffer } from 'buffer';
 import BN from 'bn.js';
 // Removed CP-AMM integration; DBC will be used instead
 // import { CpAmm, derivePoolAddress } from '@meteora-ag/cp-amm-sdk';
@@ -107,6 +107,8 @@ interface CreateMeteoraTokenRequest {
     poolSupply?: number;      // number of tokens to seed the pool (overrides amount/initialPrice calc)
     mint?: string;            // optional existing mint override
     pool?: string;            // optional existing pool override
+    curveConfig?: any;        // optional custom bonding curve configuration
+    quoteMint?: string;       // optional quote mint override (default: NATIVE_MINT)
   };
 }
 
@@ -395,7 +397,7 @@ export const handler: Handler = async (event) => {
     // }
     // 5) Create DBC config, pool, and prepare initial buy via DBC SDK
     // Use createConfigAndPoolWithFirstBuy but defer the actual swap on client-side
-    const { createConfigTx, createPoolTx /*, swapBuyTx */ } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
+    const { createConfigTx, createPoolTx , /* swapBuyTx */ } = await dbcClient.pool.createConfigAndPoolWithFirstBuy({
       config: configPubkey.toBase58(),
       feeClaimer: (TREASURY_PUBKEY ?? userPubkey).toBase58(),
       leftoverReceiver: userPubkey.toBase58(),
@@ -404,7 +406,7 @@ export const handler: Handler = async (event) => {
       ...mergedCurveConfig,
       createPoolParam: {
         baseMint: mintPubkey,
-        poolCreator: TREASURY_PUBKEY ?? userPubkey,
+        poolCreator: TREASURY_PUBKEY,
         name: token.name,
         symbol: token.ticker,
         uri: tokenMetadata.uri,
@@ -422,8 +424,10 @@ export const handler: Handler = async (event) => {
       configPubkey
     );
     console.log('Derived DBC pool address:', poolAddress.toBase58());
-    await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'deployer', walletAddress);
-    await redis.hset(`dbcPool:${poolAddress.toBase58()}`, 'mint', mintPubkey.toBase58());
+    await redis.hset(`dbcPool:${poolAddress.toBase58()}`, {
+      deployer: walletAddress,
+      mint: mintPubkey.toBase58()
+    });
     // Serialize transactions: mint (if SPL), config creation, and pool initialization
     const serializedTxs: string[] = [];
     const buildAndSign = async (
@@ -447,10 +451,11 @@ export const handler: Handler = async (event) => {
     // Config creation transaction (signed by config key)
     serializedTxs.push(await buildAndSign(createConfigTx.instructions, [configKeypair]));
     // Pool initialization transaction (signed by config key, and mint key for Token-2022)
-    const poolSigners = mergedCurveConfig.tokenType === 1
-      ? [mintKeypair, configKeypair]
-      : [configKeypair];
+    const poolSigners: Keypair[] = [TREASURY_KEYPAIR, mintKeypair];
+    
+      
     serializedTxs.push(await buildAndSign(createPoolTx.instructions, poolSigners));
+
     return {
       statusCode: 200,
       headers,
