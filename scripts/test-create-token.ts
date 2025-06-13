@@ -102,13 +102,7 @@ async function main() {
 
   // Send to test validator
   const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-  // If connected to local test validator, fund the wallet for deposits
-  if (RPC_ENDPOINT.includes('localhost') || RPC_ENDPOINT.includes('127.0.0.1')) {
-    console.log('Requesting airdrop to fund wallet (2 SOL)...');
-    const signature = await connection.requestAirdrop(wallet.publicKey, 2 * LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(signature, 'confirmed');
-    console.log('Airdrop confirmed');
-  }
+
   // First, simulate all transactions to ensure success before sending
   // initialize simulation debug array
   debug.simulations = [];
