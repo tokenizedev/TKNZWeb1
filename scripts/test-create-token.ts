@@ -81,43 +81,27 @@ async function main() {
       curveConfig: {}      // optional custom bonding curve overrides
     },
   };
+  
   console.log('Request payload:', payload);
   // record payload for debugging
   debug.payload = payload;
 
   // Call the create-token endpoint
   let data: any;
-  if (useHttp) {
-    try {
-      const resp = await axios.post(FUNCTION_URL, payload, { headers: { 'Content-Type': 'application/json' } });
-      if (resp.status !== 200) {
-        throw new Error(`HTTP error ${resp.status}`);
-      }
-      data = resp.data;
-      debug.functionResponse = { status: resp.status, data };
-    } catch (httpErr: any) {
-      console.warn('HTTP call failed, falling back to direct handler invocation:', httpErr.message || httpErr);
-      useHttp = false; // force downstream blocks to treat as local
+  
+  try {
+    const resp = await axios.post(FUNCTION_URL, payload, { headers: { 'Content-Type': 'application/json' } });
+    if (resp.status !== 200) {
+      throw new Error(`HTTP error ${resp.status}`);
     }
+    data = resp.data;
+    debug.functionResponse = { status: resp.status, data };
+  } catch (httpErr: any) {
+    console.error('HTTP call failed, falling back to direct handler invocation:', httpErr.message || httpErr);
+    process.exit(1);
   }
+  
 
-  if (!useHttp) {
-    // Import the netlify handler directly and invoke it
-    const { handler } = await import('../netlify/functions/create-token-meteora.ts');
-    const fakeEvent = {
-      httpMethod: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    } as any;
-    const res = await handler(fakeEvent, {} as any);
-    const statusCode = res.statusCode;
-    if (statusCode !== 200) {
-      console.error('Handler returned error:', res.body);
-      process.exit(1);
-    }
-    data = JSON.parse(res.body as string);
-    debug.functionResponse = { status: statusCode, data };
-  }
 
   console.log('Function response:', data);
 
@@ -240,8 +224,6 @@ async function main() {
     const swapTx = await dbcClient.pool.swap({
       owner: wallet.publicKey,
       pool: data.pool,
-      inputTokenMint: NATIVE_MINT.toBase58(),
-      outputTokenMint: data.mint,
       amountIn: new BN(depositLamports),
       minimumAmountOut: new BN(0),
       swapBaseForQuote: false, // false = swap quote (SOL) for base (token)
