@@ -16,10 +16,7 @@ dotenv.config();
  */
 import axios from 'axios';
 import { Keypair, VersionedTransaction, Connection, PublicKey, LAMPORTS_PER_SOL, SendTransactionError, SystemProgram, Transaction } from '@solana/web3.js';
-import { getOrCreateAssociatedTokenAccount, createSyncNativeInstruction, createCloseAccountInstruction, TOKEN_PROGRAM_ID, NATIVE_MINT } from '@solana/spl-token';
-import BN from 'bn.js';
 import { Buffer } from 'buffer';
-import { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk';
 // Setup debug output to file and override exit to capture all data
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,6 +59,12 @@ async function main() {
   console.log('Loaded creator wallet:', wallet.publicKey.toBase58());
   // Load image data (trim whitespace), may be a data URI (base64) or a direct URL
   
+  // --------------------------------------------------------------------------------
+  // Test parameters – tweak these two values to experiment with different scenarios
+  // --------------------------------------------------------------------------------
+  const DEPOSIT_SOL = 0.01; // SOL that will seed the bonding-curve pool (quote side)
+  const BUY_SOL = 0.01;     // SOL that the creator spends to immediately buy tokens
+
   // Prepare token metadata for creation (bare minimum)
   const payload = {
     walletAddress: wallet.publicKey.toBase58(),
@@ -76,9 +79,10 @@ async function main() {
     },
     isLockLiquidity: false,
     portalParams: {
-      amount: 0.01,        // SOL to deposit into pool side B
-      priorityFee: 0,      // SOL fee to treasury
-      curveConfig: {}      // optional custom bonding curve overrides
+      amount: DEPOSIT_SOL,
+      buyAmount: BUY_SOL,
+      priorityFee: 0,
+      curveConfig: {},
     },
   };
   
@@ -187,70 +191,7 @@ async function main() {
     console.log('RPC endpoint not supplied – skipping simulation & submission');
   }
 
-  // ---------------------------------------------------------------------------
-  // Optional: perform initial buy on the newly-created pool when an RPC endpoint
-  // is available **and** the function instructed us to deposit funds.  This is
-  // a no-op in the default test environment where `depositLamports` is 0.
-  // ---------------------------------------------------------------------------
-
-  const depositLamports = data.depositLamports;
-  if (depositLamports > 0 && RPC_ENDPOINT) {
-    console.log(`Wrapping ${depositLamports} lamports of SOL into WSOL ATA...`);
-    const wsolAta = await getOrCreateAssociatedTokenAccount(
-      connection!,
-      wallet,
-      NATIVE_MINT,
-      wallet.publicKey,
-      true
-    );
-    const wrapTx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: wallet.publicKey,
-        toPubkey: wsolAta.address,
-        lamports: depositLamports,
-      }),
-      createSyncNativeInstruction(wsolAta.address)
-    );
-    wrapTx.feePayer = wallet.publicKey;
-    const { blockhash: bhWrap } = await connection!.getLatestBlockhash('finalized');
-    wrapTx.recentBlockhash = bhWrap;
-    wrapTx.sign(wallet);
-    const sigWrap = await connection!.sendRawTransaction(wrapTx.serialize());
-    await connection!.confirmTransaction(sigWrap, 'confirmed');
-    console.log('Wrapped SOL tx:', sigWrap);
-
-    console.log('Performing DBC swap initial buy...');
-    const dbcClient = new DynamicBondingCurveClient(connection!, 'confirmed');
-    const swapTx = await dbcClient.pool.swap({
-      owner: wallet.publicKey,
-      pool: data.pool,
-      amountIn: new BN(depositLamports),
-      minimumAmountOut: new BN(0),
-      swapBaseForQuote: false, // false = swap quote (SOL) for base (token)
-      referralTokenAccount: null,
-    });
-    swapTx.feePayer = wallet.publicKey;
-    const { blockhash: bhSwap } = await connection!.getLatestBlockhash('finalized');
-    swapTx.recentBlockhash = bhSwap;
-    swapTx.sign(wallet);
-    const sigSwap = await connection!.sendRawTransaction(swapTx.serialize());
-    await connection!.confirmTransaction(sigSwap, 'confirmed');
-    console.log('Swap tx signature:', sigSwap);
-
-    console.log('Unwrapping leftover WSOL back to SOL...');
-    const unwrapTx = new Transaction().add(
-      createCloseAccountInstruction(wsolAta.address, wallet.publicKey, wallet.publicKey, [])
-    );
-    unwrapTx.feePayer = wallet.publicKey;
-    const { blockhash: bhUnwrap } = await connection!.getLatestBlockhash('finalized');
-    unwrapTx.recentBlockhash = bhUnwrap;
-    unwrapTx.sign(wallet);
-    const sigUnwrap = await connection!.sendRawTransaction(unwrapTx.serialize());
-    await connection!.confirmTransaction(sigUnwrap, 'confirmed');
-    console.log('Unwrapped WSOL tx:', sigUnwrap);
-
-    debug.swap = { wrap: sigWrap, swap: sigSwap, unwrap: sigUnwrap };
-  }
+  // No manual swap: backend already includes swap Tx when buyAmount>0.
 
   // verify on-chain accounts
   debug.accounts = {};
@@ -299,7 +240,7 @@ async function main() {
     } catch (err: any) {
       console.error('Error calling confirm-token-creation endpoint:', err.message || err);
     }
-    /**
+    
     const NOTIFY_URL = process.env.NOTIFY_URL || CONFIRM_URL.replace('confirm-token-creation', 'notify-token-creation');
     console.log('Posting to notify endpoint:', NOTIFY_URL, confirmPayload);
     try {
@@ -313,7 +254,6 @@ async function main() {
     } catch (err: any) {
       console.error('Error calling notify-token-creation endpoint:', err.message || err);
     }
-    */
   }
   // write collected debug information to file
   fs.writeFileSync(debugPath, JSON.stringify(debug, null, 2));
