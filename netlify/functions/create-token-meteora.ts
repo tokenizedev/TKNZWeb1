@@ -108,6 +108,15 @@ interface CreateMeteoraTokenRequest {
     pool?: string;            // optional existing pool override
     curveConfig?: any;        // optional custom bonding curve configuration
     quoteMint?: string;       // optional quote mint override (default: NATIVE_MINT)
+
+    /**
+     * Optional amount of SOL (quote token) that the deployer wants to use to
+     * immediately buy their own token once the pool is created. This value is
+     * converted to lamports and passed to the DBC SDK so it can append a swap
+     * instruction after pool initialization. If omitted or 0 the swap step is
+     * skipped, fully preserving backwards-compatibility.
+     */
+    buyAmount?: number;       // SOL amount to swap for the new token
   };
 }
 
@@ -127,6 +136,8 @@ interface CreateMeteoraTokenResponse {
   feeSol: number;
   feeLamports: number;
   isLockLiquidity: boolean;
+  buySol: number;
+  buyLamports: number;
   error?: string;
 }
 
@@ -250,6 +261,12 @@ export const handler: Handler = async (event) => {
     const solDepositUi = (portalParams?.amount != null && portalParams.amount >= DEFAULT_SOL_DEPOSIT)
       ? portalParams.amount
       : DEFAULT_SOL_DEPOSIT;
+
+    // Optional immediate buy amount (in SOL) requested by deployer.
+    const buySolUi = portalParams?.buyAmount ?? 0;
+
+    // Convert to lamports BN – capped at i64 max by design of JS BN (<< 2^53)
+    const buyLamportsBN = new BN(Math.round(buySolUi * LAMPORTS_PER_SOL));
     let totalMintRaw: BN = new BN(0);
     // Compute how many tokens to seed the pool
     const poolSupplyUnits = portalParams?.poolSupply != null
@@ -408,7 +425,7 @@ export const handler: Handler = async (event) => {
           uri: tokenMetadata.uri,
         },
         swapBuyParam: {
-          buyAmount: totalMintRaw, // Set to 0 to skip the swap
+          buyAmount: buyLamportsBN,
           minimumAmountOut: new BN(0),
           referralTokenAccount: null,
         },
@@ -483,6 +500,8 @@ export const handler: Handler = async (event) => {
           feeSol: feeUi,
           feeLamports,
           isLockLiquidity,
+          buySol: buySolUi,
+          buyLamports: buyLamportsBN.toNumber(),
         }),
       };
     } catch (err: any) {
